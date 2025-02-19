@@ -9,7 +9,7 @@ class SummarizedNews:
     SAVE_PATH = os.path.join(DIR_STORED_DATA, 'processed_data.jsonl')
     logger = Logger("SummarizedNews")
     
-    def __init__(self, article: str, summary: str, id: int, label: list[int]) -> None:
+    def __init__(self, article: str, summary: str, id: int, label: list[int], **kwargs) -> None:
         self.id = id
         self.label = label
         self.article = article

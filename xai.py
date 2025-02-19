@@ -145,7 +145,10 @@ class XAI:
         XAI.rationales = []
         # print(f"{len(XAI.responses)=}")
         for response in XAI.responses:
-            XAI.rationale = XAI.extract_rationale(response)
-            XAI.rationales.append(XAI.rationale)
+            try:
+                XAI.rationale = XAI.extract_rationale(response)
+                XAI.rationales.append(XAI.rationale)
+            except Exception as e:
+                XAI.logger.error(f"failed to extract rationale from response: {response}")
         XAI.logger.info(f"loaded {len(XAI.rationales)} rationales from x_ai responses")
         return XAI.rationales

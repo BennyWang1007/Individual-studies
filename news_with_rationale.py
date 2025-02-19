@@ -35,7 +35,4 @@ class NewsWithRationale(SummarizedNews, Rationale):
 
     @classmethod
     def load_all(cls):
-        with open(cls.SAVE_PATH, 'r', encoding='utf-8') as f:
-            ls = [cls(**json.loads(line)) for line in f]
-            cls.logger.info(f"Loaded {len(ls)} news with rationales records")
-            return ls
+        return list(cls.load())
