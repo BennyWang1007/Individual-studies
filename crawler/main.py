@@ -41,8 +41,8 @@ def test_get_news_with_keywords(keywords: str, num: int = 10) -> None:
         time.sleep(rand_sleep)
 
 def main() -> None:
-    UDNCrawler.init()
-    test_get_news_with_category(UDNCategorys.INSTANT, 200)
+    UDNCrawler()
+    test_get_news_with_category(UDNCategorys.INSTANT, 100)
 
     # test_get_news_with_keywords("NBA", 10)
     # urls_instant: list[tuple] = UDNCrawler.get_headlines(UDNCategorys.INSTANT, 10)

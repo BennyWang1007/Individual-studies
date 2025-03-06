@@ -5,7 +5,7 @@ import os
 from pydantic import AnyHttpUrl
 from tldextract import tldextract
 # from sqlalchemy.orm import Session
-from .exceptions import DomainMismatchException
+from .exceptions import DomainMismatchException, HTTPException
 from pydantic import BaseModel, Field, AnyHttpUrl
 # from src.error_handler.logger import Logger
 
@@ -14,12 +14,12 @@ from .utils import Logger
 class Headline(BaseModel):
     title: str = Field(
         default=...,
-        example="Title of the article",
+        examples=["Title of the article"],
         description="The title of the article"
     )
-    url: AnyHttpUrl | str = Field(
+    url: str = Field(
         default=...,
-        example="https://www.example.com",
+        examples=["https://www.example.com"],
         description="The URL of the article"
     )
 
@@ -27,12 +27,12 @@ class Headline(BaseModel):
 class News(Headline):
     time: str = Field(
         default=...,
-        example="2021-10-01T00:00:00",
+        examples=["2021-10-01T00:00:00"],
         description="The time the article was published"
     )
     content: str = Field(
         default=...,
-        example="Content of the article",
+        examples=["Content of the article"],
         description="The content of the article"
     )
 
@@ -51,12 +51,12 @@ Content: {self.content}
 class NewsWithSummary(News):
     summary: str = Field(
         default=...,
-        example="Summary of the article",
+        examples=["Summary of the article"],
         description="The summary of the article"
     )
     reason: str = Field(
         default=...,
-        example="Reason of the article",
+        examples=["Reason of the article"],
         description="The reason of the article"
     )
 
@@ -75,30 +75,65 @@ from bs4 import BeautifulSoup
 
 class NewsCrawlerBase(metaclass=abc.ABCMeta):
 
-    news_website_url: AnyHttpUrl | str
-    news_website_news_child_urls: list[AnyHttpUrl | str]
+    news_website_url: str
+    news_website_news_child_urls: list[str]
 
     SAVED_NEWS_DIR = os.path.join(os.path.dirname(__file__), "saved_news")
+    SAVE_NEWS_FILE = "default_news.jsonl"   # default file to save news
+    
     CRAWLED_URLS_FILE = os.path.join(SAVED_NEWS_DIR, "crawled_urls.json")
+    CRAWLED_URLS_ONLY_FILE = os.path.join(SAVED_NEWS_DIR, "crawled_urls_only.json")
+
     crawled_urls: list[tuple[str, str]]
+    crawled_urls_only: list[str]
 
     timeout: int
     logger: Logger
     news: News | NewsWithSummary
 
-    @staticmethod
-    def init(timeout: int = 10) -> None:
-        NewsCrawlerBase.logger = Logger(__name__).get_logger()
-        NewsCrawlerBase.logger.info(f"Initializing NewsCrawlerBase with timeout: {timeout} seconds.")
-        NewsCrawlerBase.timeout = timeout
-        if os.path.exists(NewsCrawlerBase.CRAWLED_URLS_FILE):
-            with open(NewsCrawlerBase.CRAWLED_URLS_FILE, "r") as f:
-                NewsCrawlerBase.crawled_urls = json.load(f)
-                NewsCrawlerBase.logger.info(f"Loaded {len(NewsCrawlerBase.crawled_urls)} crawled URLs")
-                # NewsCrawlerBase.logger.debug(f"Loaded crawled URLs from file: {NewsCrawlerBase.CRAWLED_URLS_FILE}")
-                # NewsCrawlerBase.logger.debug(f"Crawled URLs: {NewsCrawlerBase.crawled_urls}")
+    
+    @classmethod
+    def class_init(cls, timeout: int = 10):
+        cls.logger = Logger(__name__)
+        cls.logger.info(f"Initializing {cls} class.")
+
+        cls.timeout = timeout
+        cls.logger.info(f"Setting timeout to {timeout} seconds.")
+
+        if os.path.exists(cls.CRAWLED_URLS_FILE):
+            with open(cls.CRAWLED_URLS_FILE, "r", encoding="utf-8") as f:
+                cls.crawled_urls = json.load(f)
+                cls.logger.info(f"Loaded {len(cls.crawled_urls)} crawled URLs")
         else:
-            NewsCrawlerBase.crawled_urls = []
+            cls.crawled_urls = []
+
+        if os.path.exists(cls.CRAWLED_URLS_ONLY_FILE):
+            with open(cls.CRAWLED_URLS_ONLY_FILE, "r", encoding="utf-8") as f:
+                cls.crawled_urls_only = json.load(f)
+                cls.logger.info(f"Loaded {len(cls.crawled_urls_only)} crawled URLs only")
+        else:
+            cls.crawled_urls_only = []
+
+    def __init__(self, timeout: int = 10) -> None:
+        self.class_init(timeout)
+        # self.logger = Logger(__name__).get_logger()
+        # self.logger.info(f"Initializing NewsCrawlerBase with timeout: {timeout} seconds.")
+        # NewsCrawlerBase.timeout = timeout
+        # if os.path.exists(self.CRAWLED_URLS_FILE):
+        #     with open(self.CRAWLED_URLS_FILE, "r", encoding="utf-8") as f:
+        #         self.crawled_urls = json.load(f)
+        #         self.logger.info(f"Loaded {len(self.crawled_urls)} crawled URLs")
+        #         # NewsCrawlerBase.logger.debug(f"Loaded crawled URLs from file: {NewsCrawlerBase.CRAWLED_URLS_FILE}")
+        #         # NewsCrawlerBase.logger.debug(f"Crawled URLs: {NewsCrawlerBase.crawled_urls}")
+        # else:
+        #     self.crawled_urls = []
+
+        # if os.path.exists(self.CRAWLED_URLS_ONLY_FILE):
+        #     with open(self.CRAWLED_URLS_ONLY_FILE, "r", encoding="utf-8") as f:
+        #         self.crawled_urls_only = json.load(f)
+        #         self.logger.info(f"Loaded {len(self.crawled_urls_only)} crawled URLs")
+        # else:
+        #     self.crawled_urls_only = []
 
     @abc.abstractmethod
     def get_headlines_keyword(
@@ -123,7 +158,7 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
         return NotImplemented
 
     @abc.abstractmethod
-    def parse(self, url: AnyHttpUrl | str, skip_if_crawed: bool = True) -> News | NewsWithSummary | None:
+    def parse(self, url: str, skip_if_crawed: bool = True) -> News | NewsWithSummary | None:
         """
         Given a news URL from the news website, fetch and parse the detailed news content.
 
@@ -138,7 +173,7 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
         return NotImplemented
         
 
-    def validate_and_parse(self, url: AnyHttpUrl | str) -> News | NewsWithSummary | None:
+    def validate_and_parse(self, url: str) -> News | NewsWithSummary | None:
         """
         Validates the given URL and ensures that it belongs to the news website or its child URLs. If the URL is valid,
         it proceeds with parsing the news content by invoking the `parse` method from the child class.
@@ -156,50 +191,58 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
             raise DomainMismatchException(url)
         self.logger.info(f"Valid URL: {url}")
         return self.parse(url)
+    
+    @classmethod
+    def _request(cls, url: str, params: dict | None = None) -> requests.Response:
+        try:
+            response = requests.get(url, params=params, timeout=cls.timeout)
+            response.raise_for_status()
+            return response
+        
+        except requests.exceptions.RequestException as e:
+            raise HTTPException(status_code=502, detail="Failed to perform request to external source.")
 
-
-    # @staticmethod
-    # @abc.abstractmethod
-    # def save(news: News, db: Session | None):
-    #     """
-    #     Save the news content to a persistent storage.
-
-    #     This method takes a News namedtuple containing the title, URL, publication time, and content of a news article,
-    #     and saves it to a persistent storage, such as a database. The method should handle the storage of the news
-    #     content, ensuring that duplicate news articles are not saved.
-
-    #     :param news: A News namedtuple containing the title, URL, time, and content of the news article.
-    #     :param db: An instance of the database session to use for saving the news content.
-    #     """
-    #     return NotImplemented
 
     @staticmethod
-    def illigalize_filename(filename: str) -> str:
+    def legalize_filename(filename: str) -> str:
         return filename.replace("/", "_").replace("\\", "_").replace(":", "_").replace("*", "_").replace("?", "_").replace("\"", "_").replace("<", "_").replace(">", "_").replace("|", "_")
 
-    @staticmethod
-    def save(news: News | NewsWithSummary, save_folder: str = "") -> None:
-        filename = f"{news.title}.txt"
-        filename = NewsCrawlerBase.illigalize_filename(filename)
-        save_folder = os.path.join(NewsCrawlerBase.SAVED_NEWS_DIR, save_folder)
-        filepath = os.path.join(save_folder, filename)
 
-        if os.path.exists(filepath):
-            NewsCrawlerBase.logger.info(f"News article already exists: {filename}")
-            NewsCrawlerBase._add_crawled_url(news.url, filepath)
-            return
+    @classmethod
+    def save(cls, news: News | NewsWithSummary, save_folder: str = "", separate_file: bool = False) -> None:
 
-        if not os.path.exists(NewsCrawlerBase.SAVED_NEWS_DIR):
-            os.makedirs(NewsCrawlerBase.SAVED_NEWS_DIR)
+        if separate_file:
+            filename = f"{news.title}.txt"
+            filename = cls.legalize_filename(filename)
+            filepath = os.path.join(save_folder, filename)
+        else:
+            filename = cls.SAVE_NEWS_FILE
+            filepath = os.path.join(cls.SAVED_NEWS_DIR, filename)
+        
+        save_folder = os.path.join(cls.SAVED_NEWS_DIR, save_folder)
+
+        # if os.path.exists(filepath):
+        #     cls.logger.info(f"News article already exists: {filename}")
+        #     cls._add_crawled_url(news.url, filepath)
+        #     return
+
+        if not os.path.exists(cls.SAVED_NEWS_DIR):
+            os.makedirs(cls.SAVED_NEWS_DIR)
 
         if not os.path.exists(save_folder):
             os.makedirs(save_folder)
 
-        with open(filepath, "w", encoding="utf-8") as file:
-            file.write(str(news))
+        if separate_file:
+            with open(filepath, "w", encoding="utf-8") as file:
+                file.write(str(news))
+        else:
+            # append the news to the jsonl file
+            with open(filepath, "a", encoding="utf-8") as file:
+                file.write(json.dumps(news.dict(), ensure_ascii=False))
+                file.write("\n")
 
-        NewsCrawlerBase.logger.info(f"Saved news article to file: {filename}")
-        NewsCrawlerBase._add_crawled_url(news.url, filepath)
+        cls.logger.info(f"Saved news article to file: {filename}")
+        cls._add_crawled_url(news.url, filepath)
 
 
     @staticmethod
@@ -250,25 +293,39 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
         return NewsWithSummary(title=title, url=url, time=time, content=content, summary=summary, reason=reason)
 
 
-    @staticmethod
-    def _add_crawled_url(url: str, filepath: str):
-        NewsCrawlerBase.crawled_urls.append((url, filepath))
-        with open(NewsCrawlerBase.CRAWLED_URLS_FILE, "w") as f:
-            json.dump(NewsCrawlerBase.crawled_urls, f)
-            NewsCrawlerBase.logger.info(f"Added crawled URL to file: {url}")
+    @classmethod
+    def _add_crawled_url(cls, url: str, filepath: str):
+        cls.crawled_urls.append((url, filepath))
+        cls.crawled_urls_only.append(url)
+
+        with open(cls.CRAWLED_URLS_FILE, "w") as f:
+            json.dump(cls.crawled_urls, f, ensure_ascii=False, indent=4)
+
+        with open(cls.CRAWLED_URLS_ONLY_FILE, "w") as f:
+            json.dump(cls.crawled_urls_only, f, ensure_ascii=False, indent=4)
+    
+        # cls.logger.info(f"Added crawled URL to file: {url}")
 
     
-    @staticmethod
-    def _url_crawled(url: str) -> bool:
-        # return True if the URL has not been crawled before, and set the news attribute
-        for u, filepath in NewsCrawlerBase.crawled_urls:
-            if u == url:
-                NewsCrawlerBase.news = NewsCrawlerBase._parse_file(filepath)
-                return True
+    @classmethod
+    def _url_crawled(cls, url: str) -> bool:
+        """ Return True if the URL has not been crawled before, and set the news attribute """
+        if url in cls.crawled_urls_only:
+            with open(cls.SAVE_NEWS_FILE, "r", encoding="utf-8") as f:
+                for line in f:
+                    data = json.loads(line)
+                    if data["url"] == url:
+                        if "summary" in data:
+                            cls.news = NewsWithSummary(**data)
+                        else:
+                            cls.news = News(**data)
+                        # cls.logger.info(f"News found in class{cls}")
+                        return True
+            raise RuntimeError(f"URL has been crawled before but not found in class{cls}")
         return False
 
 
-    def _is_valid_url(self, url: AnyHttpUrl | str) -> bool:
+    def _is_valid_url(self, url: str) -> bool:
         """
         Check if the given URL belongs to the news website or its child URLs.
 

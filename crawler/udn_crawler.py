@@ -23,11 +23,11 @@ UDNCrawler Methods:
     startup(self, search_term: str) -> list[Headline]: Fetches news headlines for a given search term across multiple pages.
     get_headline(self, search_term: str, page: int | tuple[int, int]) -> list[Headline]: Fetches news headlines for specified pages.
     _fetch_news(self, page: int, search_term: str) -> list[Headline]: Helper method to fetch news headlines for a specific page.
-    _create_search_params(self, page: int, search_term: str): Creates the parameters for the search request.
-    _perform_request(self, params: dict): Performs the HTTP request to fetch news data.
-    _parse_headlines(response): Parses the response to extract headlines.
+    __create_search_params(self, page: int, search_term: str): Creates the parameters for the search request.
+    __perform_request(self, params: dict): Performs the HTTP request to fetch news data.
+    __parse_headlines(response): Parses the response to extract headlines.
     parse(self, url: str) -> News: Parses a news article from a given URL.
-    _extract_news(soup, url: str) -> News: Extracts news details from the BeautifulSoup object.
+    __extract_news(soup, url: str) -> News: Extracts news details from the BeautifulSoup object.
     save(self, news: News, db: Session): Saves a news article to the database.
     _commit_changes(db: Session): Commits the changes to the database with error handling.
 """
@@ -85,6 +85,7 @@ class UDNCrawler(NewsCrawlerBase):
     news_website_url: str = "https://udn.com/api/more"
 
     SAVED_NEWS_DIR = os.path.join(os.path.dirname(__file__), "saved_news")
+    SAVE_NEWS_FILE = os.path.join(SAVED_NEWS_DIR, "udn_news.jsonl")
     CRAWLED_URLS_FILE = os.path.join(SAVED_NEWS_DIR, "crawled_urls.json")
 
     # logger: Logger = Logger(__name__)
@@ -100,41 +101,19 @@ class UDNCrawler(NewsCrawlerBase):
         return cls._instance
 
     def __init__(self, timeout: int = 5) -> None:
-        UDNCrawler.init(timeout)
-
-    @staticmethod
-    def init(timeout: int = 5):
-        super(UDNCrawler, UDNCrawler).init(timeout)
-        UDNCrawler.logger = Logger(__name__)
-        UDNCrawler.logger.info(f"Initializing UDNCrawler with timeout: {timeout} seconds.")
-
-        # if not os.path.exists(UDNCrawler.CRAWLED_URLS_FILE):
-        #     with open(UDNCrawler.CRAWLED_URLS_FILE, "w") as f:
-        #         json.dump([], f)
-        #         print(f"Created {UDNCrawler.CRAWLED_URLS_FILE}.")
-
-        # with open(UDNCrawler.CRAWLED_URLS_FILE, "r") as f:
-        #     UDNCrawler.crawled_urls = json.load(f)
-        #     UDNCrawler.logger.info(f"Loaded {len(UDNCrawler.crawled_urls)} crawled urls.")
-
-    # @staticmethod
-    # def _add_crawled_url(url: str, filepath: str):
-    #     UDNCrawler.crawled_urls.append((url, filepath))
-    #     with open(UDNCrawler.CRAWLED_URLS_FILE, "w") as f:
-    #         json.dump(UDNCrawler.crawled_urls, f)
-    #         print(f"Added {url} to crawled urls.")
+        super(UDNCrawler, self).__init__(timeout)
 
     @staticmethod
     def _get_links(soup: BeautifulSoup, num: int) -> list[tuple[str, str]]:
-        news_block = soup.find_all("div", class_="context-box__content story-list__holder story-list__holder--full")
+        news_blocks = soup.find_all("div", class_="context-box__content story-list__holder story-list__holder--full")
 
-        if len(news_block) != 1:
+        if len(news_blocks) != 1:
             UDNCrawler.logger.error(f"Failed to find news block in the HTML content.")
-            UDNCrawler.logger.error(f"{len(news_block)=}")
+            UDNCrawler.logger.error(f"{len(news_blocks)=}")
             UDNCrawler.logger.debug(f"{soup=}")
             raise HTTPException(status_code=502, detail="Failed to parse news data from external source.")
 
-        news_block = news_block[0]
+        news_block = news_blocks[0]
         news_list = news_block.find_all("div", class_="story-list__text")
 
         ret: list[tuple[str, str]] = []
@@ -172,7 +151,7 @@ class UDNCrawler(NewsCrawlerBase):
     def get_headlines_catagory(mode: UDNCategory, num: int = 10, page: int = 1) -> list[Headline]:
         
         # name, url = mode.name, mode.url
-        # response = UDNCrawler._perform_request(url=url)
+        # response = UDNCrawler.__perform_request(url=url)
         # soup = BeautifulSoup(response.text, "html.parser")
         # links = UDNCrawler._get_links(soup, 20000)
         # headlines = [Headline(title=title, url=url) for title, url in links]
@@ -180,9 +159,9 @@ class UDNCrawler(NewsCrawlerBase):
         headlines: list[Headline] = []
 
         while len(headlines) < num:
-            params = UDNCrawler._create_nextpage_param(page)
-            response = UDNCrawler._perform_request(params=params)
-            hds = UDNCrawler._parse_headlines(response)
+            params = UDNCrawler.__create_nextpage_param(page)
+            response = UDNCrawler.__perform_request(params=params)
+            hds = UDNCrawler.__parse_headlines(response)
             if len(hds) == 0: break
             for hd in hds:
                 hd.url = UDNCrawler._process_url(hd.url)
@@ -216,7 +195,7 @@ class UDNCrawler(NewsCrawlerBase):
             page_range: list = [i for i in range(page[0], page[1] + 1)] if isinstance(page, tuple) else [page]
             headlines = []
             for page_num in page_range:
-                headlines.extend(UDNCrawler._fetch_headlines(page_num, search_term))
+                headlines.extend(UDNCrawler.__fetch_headlines(page_num, search_term))
 
             UDNCrawler.logger.info(f"Fetched {len(headlines)} headlines for search term '{search_term}'.")
             return headlines
@@ -224,7 +203,7 @@ class UDNCrawler(NewsCrawlerBase):
             raise HTTPException(status_code=502, detail="Failed to fetch news from external source.")
     
     @staticmethod
-    def _perform_request(url: str | None = None, params: dict | None = None) -> requests.Response:
+    def __perform_request(url: str | None = None, params: dict | None = None) -> requests.Response:
         url = url or UDNCrawler.news_website_url
         # print(f"{url=}, {params=}")
         UDNCrawler.logger.info(f"Performing request to URL: {url} with params: {params}")
@@ -237,14 +216,14 @@ class UDNCrawler(NewsCrawlerBase):
             raise HTTPException(status_code=502, detail="Failed to perform request to external source.")
 
     @staticmethod
-    def _fetch_headlines(page: int, search_term: str) -> list[Headline]:
-        params = UDNCrawler._create_search_params(page, search_term)
-        response = UDNCrawler._perform_request(params=params)
-        headlines = UDNCrawler._parse_headlines(response)
+    def __fetch_headlines(page: int, search_term: str) -> list[Headline]:
+        params = UDNCrawler.__create_search_params(page, search_term)
+        response = UDNCrawler.__perform_request(params=params)
+        headlines = UDNCrawler.__parse_headlines(response)
         return headlines
 
     @staticmethod
-    def _create_search_params(page: int, search_term: str) -> dict:
+    def __create_search_params(page: int, search_term: str) -> dict:
         return {
             "page": page,
             "id": f"search:{search_term}",
@@ -253,7 +232,7 @@ class UDNCrawler(NewsCrawlerBase):
         }
     
     @staticmethod
-    def _create_nextpage_param(page: int) -> dict:
+    def __create_nextpage_param(page: int) -> dict:
         return {
             "page": page,
             "id": "",
@@ -263,17 +242,7 @@ class UDNCrawler(NewsCrawlerBase):
         }
 
     @staticmethod
-    def _request(url: str, params: dict | None = None) -> requests.Response:
-        try:
-            response = requests.get(url, params=params, timeout=UDNCrawler.timeout)
-            response.raise_for_status()
-            return response
-        
-        except requests.exceptions.RequestException as e:
-            raise HTTPException(status_code=502, detail="Failed to perform request to external source.")
-
-    @staticmethod
-    def _parse_headlines(response: requests.Response) -> list[Headline]:
+    def __parse_headlines(response: requests.Response) -> list[Headline]:
         """ This should only be called by getting response from udn.com/api """
         try:
             data = response.json()
@@ -299,13 +268,13 @@ class UDNCrawler(NewsCrawlerBase):
                 return UDNCrawler.news
         response = UDNCrawler._request(url)
         soup = BeautifulSoup(response.text, "html.parser")
-        news = UDNCrawler._extract_news(soup, url)
+        news = UDNCrawler.__extract_news(soup, url)
         if news is None: return None
         UDNCrawler.logger.info(f"Parsed news article from URL: {url}")
         return news
 
     @staticmethod
-    def _extract_news(soup: BeautifulSoup, url: str) -> News | NewsWithSummary | None:
+    def __extract_news(soup: BeautifulSoup, url: str) -> News | NewsWithSummary | None:
         # print(soup)
         try:
             article_title = soup.find("h1", class_="article-content__title").text
@@ -327,51 +296,6 @@ class UDNCrawler(NewsCrawlerBase):
             # raise HTTPException(status_code=502, detail="Failed to extract news data from external source.")
             UDNCrawler.logger.error(f"Failed to extract news from: {url}")
             return None
-
-    # def save(self, news: NewsWithSummary, db: Session):
-    #     # logger = Logger(__name__, "save").get_logger()
-    #     db.add(news)
-    #     self._commit_changes(db)
-    #     # logger.debug(f"Saved news article to the database: {news.title}")
-    #     self.logger.info(f"Saved news article to the database: {news.title}")
-
-    # @staticmethod
-    # def illigalize_filename(filename: str) -> str:
-    #     invalid_chars = ["\\", "/", ":", "*", "?", '"', "<", ">", "|"]
-    #     for char in invalid_chars:
-    #         filename = filename.replace(char, "")
-    #     return filename
-
-    # @staticmethod
-    # def save(news: News | NewsWithSummary, save_folder: str = "") -> None:
-    #     # Save the news to a file
-    #     filename = f"{news.title}.txt"
-    #     filename = UDNCrawler.illigalize_filename(filename)
-    #     # filename = f"{news.title}.json"
-    #     save_folder = os.path.join(UDNCrawler.SAVED_NEWS_DIR, save_folder)
-    #     filepath = os.path.join(save_folder, filename)
-
-    #     # print(filepath)
-
-    #     if os.path.exists(filepath):
-    #         UDNCrawler.logger.info(f"News article already exists: {filename}")
-    #         UDNCrawler._add_crawled_url(news.url, filepath)
-    #         return
-
-    #     if not os.path.exists(UDNCrawler.SAVED_NEWS_DIR):
-    #         os.makedirs(UDNCrawler.SAVED_NEWS_DIR)
-
-    #     if not os.path.exists(save_folder):
-    #         os.makedirs(save_folder)
-
-    #     with open(filepath, "w", encoding="utf-8") as file:
-    #         file.write(str(news))
-
-    #     # with open(filepath, "w", encoding="utf-8") as file:
-    #     #     file.write(news.json(indent=4))
-
-    #     UDNCrawler.logger.info(f"Saved news article to file: {filename}")
-    #     UDNCrawler._add_crawled_url(news.url, filepath)
 
     # @staticmethod
     # def _parse_file(filepath: str) -> News | NewsWithSummary:
