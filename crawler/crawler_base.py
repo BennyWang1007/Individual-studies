@@ -1,14 +1,13 @@
 import abc
 import json
 import os
+import requests
 
-from pydantic import AnyHttpUrl
-from tldextract import tldextract
-# from sqlalchemy.orm import Session
-from .exceptions import DomainMismatchException, HTTPException
+from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field, AnyHttpUrl
-# from src.error_handler.logger import Logger
+from tldextract import tldextract
 
+from .exceptions import DomainMismatchException, HTTPException
 from .utils import Logger
 
 class Headline(BaseModel):
@@ -68,10 +67,6 @@ Summary: {self.summary}
 Reason: {self.reason}\
 """
 
-
-
-import requests
-from bs4 import BeautifulSoup
 
 class NewsCrawlerBase(metaclass=abc.ABCMeta):
 

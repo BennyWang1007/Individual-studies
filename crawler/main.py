@@ -1,13 +1,8 @@
-
-from .udn_crawler import UDNCrawler
-from .crawler_base import News, NewsWithSummary
-
-
-from .udn_crawler import UDNCategory, UDNCategorys
-
 import random
 import time
 
+from .crawler_base import News, NewsWithSummary
+from .udn_crawler import UDNCrawler, UDNCategory, UDNCategorys
 from .utils import Logger
 
 def test_get_news_with_category(catagory: UDNCategory, num: int = 10, logger: Logger = Logger("__main__")) -> None:
@@ -89,8 +84,6 @@ def main() -> None:
 
     # test_news = UDNCrawler.fetch_and_save_news("https://money.udn.com/money/story/12040/8389105", "TEST")
     # print(test_news, end="")
-
-
 
 
 if __name__ == "__main__":

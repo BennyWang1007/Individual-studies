@@ -37,22 +37,19 @@ import os
 import requests
 
 from bs4 import BeautifulSoup
-# from sqlalchemy.orm import Session
+from enum import Enum
+
 from .crawler_base import NewsCrawlerBase, Headline, News, NewsWithSummary
-# from fastapi import HTTPException
-
-# Define a custom exception for domain mismatch
-
 from .exceptions import HTTPException
 from .utils import Logger
 
-from enum import Enum
 
 class UDNCategory:
     __slots__ = ["name", "url"]
     def __init__(self, name: str, url: str) -> None:
         self.name = name
         self.url = url
+
 
 class UDNCategorys:
     INSTANT =   UDNCategory("instant", "https://udn.com/news/breaknews/1")
@@ -77,6 +74,7 @@ class UDNCategorys:
     TRAVEL =    UDNCategory("travel", "https://udn.com/news/cate/1013")
     MAGAZINE =  UDNCategory("magazine", "https://udn.com/news/cate/1015")
 
+
 class UDNCrawler(NewsCrawlerBase):
 
     _instance = None
@@ -91,7 +89,8 @@ class UDNCrawler(NewsCrawlerBase):
     # logger: Logger = Logger(__name__)
 
     crawled_urls: list[tuple[str, str]] = [] # (url, filepath)
-
+    
+    logger: Logger
     skipped: bool = False
     news: News | NewsWithSummary
 
