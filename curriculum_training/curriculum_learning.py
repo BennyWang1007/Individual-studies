@@ -3,7 +3,7 @@ from enum import Enum
 from opencc import OpenCC
 from transformers import AutoTokenizer, Trainer
 
-from utils import load_generated_new_with_rationale, NewsWithRationale
+from curriculum_utils import load_curriculum_datasets, DifficultyLevels
 
 LOAD_MODEL = False
 LOAD_MODEL = True
@@ -12,64 +12,45 @@ model_name = "Qwen/Qwen2.5-0.5B"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 MAX_LENGTH = 1024
 
+# device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "cpu"
+
 if LOAD_MODEL:
     from transformers import AutoModelForCausalLM, TrainingArguments
 
-    model = AutoModelForCausalLM.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
 
+
+def get_training_args(difficulty_level: DifficultyLevels):
+
+    match difficulty_level:
+        case DifficultyLevels.TO_ZHT:
+            learning_rate = 5e-5
+        case DifficultyLevels.ESSENTIAL_ASPECTS:
+            learning_rate = 5e-5
+        case DifficultyLevels.TRIPLES:
+            learning_rate = 2e-5
+        case DifficultyLevels.SUMMARY:
+            learning_rate = 1e-5
+        case DifficultyLevels.DIRECT_SUMMARY:
+            learning_rate = 1e-5
+        case _:
+            raise Exception("Invalid difficulty level")
+        
     # Training arguments
-    training_args = TrainingArguments(
+    return TrainingArguments(
         output_dir="./qwen2.5-finetuned",
         evaluation_strategy="epoch",
         save_strategy="epoch",
-        per_device_train_batch_size=2,
-        per_device_eval_batch_size=2,
-        num_train_epochs=1,
+        per_device_train_batch_size=4,
+        per_device_eval_batch_size=4,
+        num_train_epochs=3,
         logging_dir="./logs",
         logging_steps=10,
-        report_to="none"
+        report_to="none",
+        learning_rate=learning_rate,
+        no_cuda=True
     )
-
-
-class DifficultyLevels(Enum):
-    TO_ZHT = 0
-    ESSENTIAL_ASPECTS = 1
-    TRIPLES = 2
-    SUMMARY = 3
-    DIRECT_SUMMARY = 4
-
-# PREFIX_OF_DIFFICULTY_LEVELS = ["請提取新聞中的核心要素：", "請提取新聞中的三元組：", "請為新聞生成摘要："]
-PREFIX_OF_DIFFICULTY_LEVELS = ["將以下文章翻譯成繁體中文：", "請提取新聞中的核心要素：", "請根據提供的核心要素，提取新聞中的三元組：", "請根據提供的核心要素和三元組，為新聞生成摘要：", "請為新聞生成摘要："]
-
-
-def load_curriculum_datasets(dataset_name, difficulty_levels: DifficultyLevels) -> list[tuple[str, str]]:
-    """ Load datasets with increasing difficulty. Returns a list of datasets with [system, user] pairs. """
-    data: list[NewsWithRationale] = load_generated_new_with_rationale()
-    ret: list[tuple[str, str]] = []
-
-    match difficulty_levels:
-        case DifficultyLevels.TO_ZHT:
-            cc = OpenCC('s2twp')
-            for d in data:
-                ret.append((d.summary, cc.convert(d.summary)))
-        case DifficultyLevels.ESSENTIAL_ASPECTS:
-            for d in data:
-                ret.append((d.article, ", ".join(d.essential_aspects)))
-        case DifficultyLevels.TRIPLES:
-            for d in data:
-                ret.append((d.article + "\n\n核心要素：\n\n" + ", ".join(d.essential_aspects), ", ".join(d.triples)))
-        case DifficultyLevels.SUMMARY:
-            for d in data:
-                ret.append((d.article + "\n\n核心要素：\n\n" + ", ".join(d.essential_aspects) + "\n\n三元組：\n\n" + ", ".join(d.triples), d.summary))
-        case DifficultyLevels.DIRECT_SUMMARY:
-            for d in data:
-                ret.append((d.article, d.summary))
-        case _:
-            raise Exception("Invalid difficulty level")
-    
-    ret = [(f"{PREFIX_OF_DIFFICULTY_LEVELS[difficulty_levels.value]}\n\n{d[0]}", d[1]) for d in ret]
-
-    return ret
 
 
 def tokenize_function(sample: Dataset):
@@ -84,53 +65,68 @@ def tokenize_function(sample: Dataset):
 
 
 def main():
+    
+    dataset_name = "generated_news_with_rationales_qwen2.5_32b-instruct-q6_K.jsonl"
+    curriculum_datasets = []
 
-    curriculum_datasets_original = [load_curriculum_datasets("generated_news_with_rationales.jsonl", level) for level in DifficultyLevels]
-    # for i, dataset in enumerate(curriculum_datasets_original):
-    #     print(f"Difficulty level {DifficultyLevels(i)}:")
-    #     for j in range(1):
-    #         print(dataset[j])
-    #     print()
+    for difficulty_level in DifficultyLevels:
+        dataset = load_curriculum_datasets(dataset_name, difficulty_level)
+        texts = []
+        for i, (sys_prompt, user_prompt, out_str) in enumerate(dataset):
+            messages = [
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_prompt},
+                {"role": "assistant", "content": out_str}
+            ]
+            text = tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                # add_generation_prompt=True
+                add_generation_prompt=False
+            )
+            texts.append(text)
+        
+        curriculum_datasets.append(texts)
 
-    # curriculum_datasets = []
-    # for i, dataset in enumerate(curriculum_datasets_original):
-    #     curriculum_datasets.extend([{"text": f"system: {data[0]} user: {data[1]}", "difficulty": i} for data in dataset])
+    # print(f"{len(curriculum_datasets)=}")
+    # print(f"{len(curriculum_datasets[0])=}")
+    # print(f"{curriculum_datasets[0][0]}")
 
     curriculum_datasets = [
         Dataset.from_dict({
-            "text": [f"system: {d[0]} user: {d[1]}" for d in data],  # Correctly format all samples
+            "text": [text for text in data],  # Correctly format all samples
             "difficulty": [i] * len(data)  # Repeat difficulty level for each sample
-        }) for i, data in enumerate(curriculum_datasets_original)
+        }) for i, data in enumerate(curriculum_datasets)
     ]
 
+    # Split the dataset into training and evaluation sets
     split_dataset = [dataset.train_test_split(test_size=0.2, seed=42) for dataset in curriculum_datasets]
+    train_datasets, eval_datasets = [dataset["train"] for dataset in split_dataset], [dataset["test"] for dataset in split_dataset]
 
-    train_datasets = [dataset["train"] for dataset in split_dataset]
-    eval_datasets = [dataset["test"] for dataset in split_dataset]
-
-    # print(len(train_datasets[0]))
-    # print(len(eval_datasets[0]))
-
+    assert isinstance(train_datasets[0], Dataset)
+    assert isinstance(train_datasets[0][0], dict)
+    assert isinstance(train_datasets[0][0]["text"], str)
 
     # Train progressively on harder datasets
     for i, (train_dataset, eval_dataset) in enumerate(zip(train_datasets, eval_datasets)):
         print(f"Training on difficulty level {DifficultyLevels(i)}:")
         tokenized_train_dataset = train_dataset.map(tokenize_function, batched=True)
         tokenized_eval_dataset = eval_dataset.map(tokenize_function, batched=True)
-        print(train_dataset[0])
-        print(eval_dataset[0])
-        # continue
+        # print(train_dataset[0])
+        # print(eval_dataset[0])
+
         trainer = Trainer(
             model=model,
-            args=training_args,
+            # args=training_args,
+            args=get_training_args(DifficultyLevels(i)),
             train_dataset=tokenized_train_dataset,
-            eval_dataset=tokenized_eval_dataset,
+            eval_dataset=tokenized_eval_dataset
         )
         trainer.train()
 
     # Save the final model
-    model.save_pretrained("./qwen2.5-curriculum-trained")
-    tokenizer.save_pretrained("./qwen2.5-curriculum-trained")
+    model.save_pretrained("./qwen2.5-curriculum-trained3")
+    tokenizer.save_pretrained("./qwen2.5-curriculum-trained3")
     print("Training complete!")
 
 if __name__ == "__main__":
