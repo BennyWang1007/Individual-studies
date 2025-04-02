@@ -85,10 +85,12 @@ class UDNCrawler(NewsCrawlerBase):
     SAVED_NEWS_DIR = os.path.join(os.path.dirname(__file__), "saved_news")
     SAVE_NEWS_FILE = os.path.join(SAVED_NEWS_DIR, "udn_news.jsonl")
     CRAWLED_URLS_FILE = os.path.join(SAVED_NEWS_DIR, "crawled_urls.json")
+    CRAWLED_FAILED_URLS_FILE = os.path.join(SAVED_NEWS_DIR, "crawled_fail_urls.json")
 
     # logger: Logger = Logger(__name__)
 
     crawled_urls: list[tuple[str, str]] = [] # (url, filepath)
+    crawled_failed_urls: list[str] = []
     
     logger: Logger
     skipped: bool = False
@@ -272,8 +274,8 @@ class UDNCrawler(NewsCrawlerBase):
         UDNCrawler.logger.info(f"Parsed news article from URL: {url}")
         return news
 
-    @staticmethod
-    def __extract_news(soup: BeautifulSoup, url: str) -> News | NewsWithSummary | None:
+    @classmethod
+    def __extract_news(cls, soup: BeautifulSoup, url: str) -> News | NewsWithSummary | None:
         # print(soup)
         try:
             article_title = soup.find("h1", class_="article-content__title").text
@@ -291,9 +293,11 @@ class UDNCrawler(NewsCrawlerBase):
                 time=time,
                 content=content,
             )
+
         except AttributeError as e:
             # raise HTTPException(status_code=502, detail="Failed to extract news data from external source.")
             UDNCrawler.logger.error(f"Failed to extract news from: {url}")
+            cls._add_crawled_fail_url(url)
             return None
 
     # @staticmethod

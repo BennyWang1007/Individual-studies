@@ -78,9 +78,11 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
     
     CRAWLED_URLS_FILE = os.path.join(SAVED_NEWS_DIR, "crawled_urls.json")
     CRAWLED_URLS_ONLY_FILE = os.path.join(SAVED_NEWS_DIR, "crawled_urls_only.json")
+    CRAWLED_FAILED_URLS_FILE = os.path.join(SAVED_NEWS_DIR, "crawled_failed_urls.json")
 
     crawled_urls: list[tuple[str, str]]
     crawled_urls_only: list[str]
+    crawled_failed_urls: list[str]
 
     timeout: int
     logger: Logger
@@ -108,6 +110,13 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
                 cls.logger.info(f"Loaded {len(cls.crawled_urls_only)} crawled URLs only")
         else:
             cls.crawled_urls_only = []
+
+        if os.path.exists(cls.CRAWLED_FAILED_URLS_FILE):
+            with open(cls.CRAWLED_FAILED_URLS_FILE, "r", encoding="utf-8") as f:
+                cls.crawled_failed_urls = json.load(f)
+                cls.logger.info(f"Loaded {len(cls.crawled_failed_urls)} crawled failed URLs")
+        else:
+            cls.crawled_failed_urls = []
 
     def __init__(self, timeout: int = 10) -> None:
         self.class_init(timeout)
@@ -301,10 +310,23 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
     
         # cls.logger.info(f"Added crawled URL to file: {url}")
 
+    @classmethod
+    def _add_crawled_fail_url(cls, url: str):
+        cls.crawled_failed_urls.append(url)
+
+        with open(cls.CRAWLED_FAILED_URLS_FILE, "w") as f:
+            json.dump(cls.crawled_failed_urls, f, ensure_ascii=False, indent=4)
+
+        cls.logger.error(f"Added crawled failed URL to file: {url}")
+
     
     @classmethod
     def _url_crawled(cls, url: str) -> bool:
         """ Return True if the URL has not been crawled before, and set the news attribute """
+        if url in cls.crawled_failed_urls:
+            cls.news = News(title="Failed to crawl", url=url, time="", content="")
+            return True
+        
         if url in cls.crawled_urls_only:
             with open(cls.SAVE_NEWS_FILE, "r", encoding="utf-8") as f:
                 for line in f:
