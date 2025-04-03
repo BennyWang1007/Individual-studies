@@ -149,7 +149,7 @@ class UDNCrawler(NewsCrawlerBase):
 
 
     @staticmethod
-    def get_headlines_catagory(mode: UDNCategory, num: int = 10, page: int = 1) -> list[Headline]:
+    def get_headlines_catagory(mode: UDNCategory, num: int = 10, page: int = 1) -> tuple[list[Headline], int]:
         
         # name, url = mode.name, mode.url
         # response = UDNCrawler.__perform_request(url=url)
@@ -169,7 +169,7 @@ class UDNCrawler(NewsCrawlerBase):
             headlines.extend(hds)
             page += 1
 
-        return headlines[:num]
+        return headlines[:num], page
 
     def startup(self, search_term: str) -> list[Headline]:
         """

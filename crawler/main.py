@@ -1,27 +1,34 @@
 import random
 import time
+from tqdm import tqdm
 
 from .crawler_base import News, NewsWithSummary
 from .udn_crawler import UDNCrawler, UDNCategory, UDNCategorys
 from .utils import Logger
 
+cur_page = 155
+
 def test_get_news_with_category(catagory: UDNCategory, num: int = 10, logger: Logger = Logger("__main__")) -> None:
+    global cur_page
     logger.info(f"Start to get {num} news from {catagory.name}")
     count = 0
-    page = 1
-    while count < num:
-        headlines = UDNCrawler.get_headlines_catagory(catagory, num - count, page=page)
-        for headline in headlines:
-            news = UDNCrawler.fetch_and_save_news(headline.url, catagory.name, skip_if_crawled=True)
-            if UDNCrawler.skipped:
-                logger.info(f"Skipped {headline.title}, {headline.url}:")
-                continue
-            count += 1
-            rand_sleep = 0.5 + random.random() * 0.5
-            time.sleep(rand_sleep)
-        page += 1
-        rand_sleep = 0.5 + random.random() * 0.5
-        time.sleep(rand_sleep)
+    with tqdm(total=num, desc=f"Get {count} news from {catagory.name}") as pbar:
+        while count < num:
+            headlines, next_page = UDNCrawler.get_headlines_catagory(catagory, num - count, page=cur_page)
+            for headline in headlines:
+                news = UDNCrawler.fetch_and_save_news(headline.url, catagory.name, skip_if_crawled=True)
+                if UDNCrawler.skipped:
+                    logger.info(f"Skipped {headline.title}, {headline.url}:")
+                    continue
+                count += 1
+                pbar.update(1)
+                rand_sleep = 0.1 + random.random() * 0.1
+                time.sleep(rand_sleep)
+
+            if next_page is not None:
+                cur_page = next_page
+            # rand_sleep = 0.5 + random.random() * 0.5
+            # time.sleep(rand_sleep)
     logger.info(f"Get {count} news from {catagory.name}")
 
 def test_get_news_with_keywords(keywords: str, num: int = 10) -> None:
@@ -37,7 +44,9 @@ def test_get_news_with_keywords(keywords: str, num: int = 10) -> None:
 
 def main() -> None:
     UDNCrawler()
-    test_get_news_with_category(UDNCategorys.INSTANT, 100)
+    # suppress the logger.info
+    UDNCrawler.logger.set_verbose_level(0)
+    test_get_news_with_category(UDNCategorys.INSTANT, 200)
 
     # test_get_news_with_keywords("NBA", 10)
     # urls_instant: list[tuple] = UDNCrawler.get_headlines(UDNCategorys.INSTANT, 10)
