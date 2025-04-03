@@ -1,4 +1,5 @@
 import json
+import os
 from tqdm import tqdm
 
 import torch
@@ -12,9 +13,10 @@ from utils import legalize_filename, get_rationale_prompt_no_gt_chinese_system, 
 if __name__ == "__main__":
 
     cc = OpenCC('s2twp')
-
+    
+    DIR = os.path.dirname(os.path.abspath(__file__))
     filename = legalize_filename(f"generated_news_with_rationales_{MODEL_DISTAL_FROM}.jsonl")
-    save_filename = legalize_filename(f"generated_TO_ZHT_responses_{MODEL_BASE}.jsonl")
+    save_filename = os.path.join(DIR, legalize_filename(f"generated_TO_ZHT_responses_{MODEL_BASE}.jsonl"))
 
     # news_without_output = load_curriculum_datasets(filename, DifficultyLevels.TO_ZHT)
     news_without_output = load_curriculum_datasets(filename, DifficultyLevels.DIRECT_SUMMARY)
@@ -41,7 +43,7 @@ if __name__ == "__main__":
         model_inputs = tokenizer(text, return_tensors="pt").to(model.device)
         generated_ids = model.generate(
             **model_inputs,
-            max_new_tokens=512,
+            max_new_tokens=1024,
             # temperature=
         )
         

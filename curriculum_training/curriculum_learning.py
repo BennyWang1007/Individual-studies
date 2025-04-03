@@ -1,26 +1,24 @@
-from datasets import Dataset
+
 from enum import Enum
+
+import torch
+from datasets import Dataset
 from opencc import OpenCC
-from transformers import AutoTokenizer, Trainer
+from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
 
 from curriculum_utils import load_curriculum_datasets, DifficultyLevels
 
-LOAD_MODEL = False
+
 LOAD_MODEL = True
 
 model_name = "Qwen/Qwen2.5-0.5B"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 MAX_LENGTH = 1024
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 
-# device = "cuda" if torch.cuda.is_available() else "cpu"
-device = "cpu"
-
-if LOAD_MODEL:
-    from transformers import AutoModelForCausalLM, TrainingArguments
-
-    model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+# device = "cpu"
 
 
 def get_training_args(difficulty_level: DifficultyLevels):
@@ -42,7 +40,7 @@ def get_training_args(difficulty_level: DifficultyLevels):
     # Training arguments
     return TrainingArguments(
         output_dir="./qwen2.5-finetuned",
-        evaluation_strategy="epoch",
+        eval_strategy="epoch",
         save_strategy="epoch",
         per_device_train_batch_size=BATCH_SIZE,
         per_device_eval_batch_size=BATCH_SIZE,
@@ -52,7 +50,7 @@ def get_training_args(difficulty_level: DifficultyLevels):
         # report_to="none",
         report_to=["tensorboard"],
         learning_rate=learning_rate,
-        use_cpu=True
+        # use_cpu=True
     )
 
 
@@ -82,8 +80,17 @@ def main():
     dataset_name = "generated_news_with_rationales_qwen2.5_32b-instruct-q6_K.jsonl"
     curriculum_datasets = []
 
+    # count the number of news in the dataset
+    with open(dataset_name, "r", encoding="utf-8") as f:
+        news_count = sum(1 for _ in f)
+    print(f"Total news count: {news_count}")
+
     for difficulty_level in DifficultyLevels:
         dataset = load_curriculum_datasets(dataset_name, difficulty_level)
+
+        # for demo purpose
+        dataset = dataset[:10]
+
         texts = []
         for i, (sys_prompt, user_prompt, out_str) in enumerate(dataset):
             messages = [
@@ -131,6 +138,11 @@ def main():
     print(f"Total training samples: {sum(len(train_dataset) for train_dataset in train_datasets)}")
     print(f"Total evaluation samples: {sum(len(eval_dataset) for eval_dataset in eval_datasets)}")
 
+
+    """ ---------------------------------- Curriculum Training for 5 stages ---------------------------------- """
+    if LOAD_MODEL:
+        model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
+
     # Train progressively on harder datasets
     for i, (train_dataset, eval_dataset) in enumerate(zip(train_datasets, eval_datasets)):
         print(f"Training on difficulty level {DifficultyLevels(i)}:")
@@ -149,9 +161,38 @@ def main():
         trainer.train()
 
     # Save the final model
-    model.save_pretrained("./qwen2.5-curriculum-trained4_3")
-    tokenizer.save_pretrained("./qwen2.5-curriculum-trained4_3")
+    model.save_pretrained(f"./qwen2.5-curriculum-trained_{news_count}news_5stage_A100")
+    tokenizer.save_pretrained(f"./qwen2.5-curriculum-trained_{news_count}news_5stage_A100")
+
+    
+    """ ---------------------------------- Curriculum Training for 4 stages ---------------------------------- """
+
+    if LOAD_MODEL:
+        model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
+
+    
+    # Train progressively on harder datasets, skip the first stage
+    for i, (train_dataset, eval_dataset) in enumerate(zip(train_datasets, eval_datasets)):
+        if i == 0:
+            continue
+        print(f"Training on difficulty level {DifficultyLevels(i)}:")
+        tokenized_train_dataset = train_dataset.map(tokenize_function, batched=True)
+        tokenized_eval_dataset = eval_dataset.map(tokenize_function, batched=True)
+
+        trainer = Trainer(
+            model=model,
+            args=get_training_args(DifficultyLevels(i)),
+            train_dataset=tokenized_train_dataset,
+            eval_dataset=tokenized_eval_dataset
+        )
+        trainer.train()
+
+    # Save the final model
+    model.save_pretrained(f"./qwen2.5-curriculum-trained_{news_count}news_4stage_A100")
+    tokenizer.save_pretrained(f"./qwen2.5-curriculum-trained_{news_count}news_4stage_A100")
+
     print("Training complete!")
+
 
 if __name__ == "__main__":
     main()
