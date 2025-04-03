@@ -10,7 +10,9 @@ LOAD_MODEL = True
 
 model_name = "Qwen/Qwen2.5-0.5B"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
+
 MAX_LENGTH = 1024
+BATCH_SIZE = 4
 
 # device = "cuda" if torch.cuda.is_available() else "cpu"
 device = "cpu"
@@ -42,14 +44,15 @@ def get_training_args(difficulty_level: DifficultyLevels):
         output_dir="./qwen2.5-finetuned",
         evaluation_strategy="epoch",
         save_strategy="epoch",
-        per_device_train_batch_size=4,
-        per_device_eval_batch_size=4,
+        per_device_train_batch_size=BATCH_SIZE,
+        per_device_eval_batch_size=BATCH_SIZE,
         num_train_epochs=3,
         logging_dir="./logs",
         logging_steps=10,
-        report_to="none",
+        # report_to="none",
+        report_to=["tensorboard"],
         learning_rate=learning_rate,
-        no_cuda=True
+        use_cpu=True
     )
 
 
@@ -62,6 +65,16 @@ def tokenize_function(sample: Dataset):
     )
     tokenized_inputs["labels"] = tokenized_inputs["input_ids"]
     return tokenized_inputs
+
+
+def check_to_filter(messages: dict) -> bool:
+    """ Check if the input is too long to be processed by the model """
+    tokenized_inputs = tokenizer.apply_chat_template(
+        messages,
+        tokenize=True,
+        add_generation_prompt=False
+    )
+    return len(tokenized_inputs) > MAX_LENGTH
 
 
 def main():
@@ -78,12 +91,17 @@ def main():
                 {"role": "user", "content": user_prompt},
                 {"role": "assistant", "content": out_str}
             ]
+
+            if check_to_filter(messages):
+                continue
+
             text = tokenizer.apply_chat_template(
                 messages,
                 tokenize=False,
                 # add_generation_prompt=True
                 add_generation_prompt=False
             )
+
             texts.append(text)
         
         curriculum_datasets.append(texts)
@@ -107,6 +125,12 @@ def main():
     assert isinstance(train_datasets[0][0], dict)
     assert isinstance(train_datasets[0][0]["text"], str)
 
+    for difficulty_level, (train_dataset, eval_dataset) in enumerate(zip(train_datasets, eval_datasets)):
+        print(f"Difficulty level {DifficultyLevels(difficulty_level)}: {len(train_dataset)} training samples, {len(eval_dataset)} evaluation samples")
+
+    print(f"Total training samples: {sum(len(train_dataset) for train_dataset in train_datasets)}")
+    print(f"Total evaluation samples: {sum(len(eval_dataset) for eval_dataset in eval_datasets)}")
+
     # Train progressively on harder datasets
     for i, (train_dataset, eval_dataset) in enumerate(zip(train_datasets, eval_datasets)):
         print(f"Training on difficulty level {DifficultyLevels(i)}:")
@@ -125,8 +149,8 @@ def main():
         trainer.train()
 
     # Save the final model
-    model.save_pretrained("./qwen2.5-curriculum-trained3")
-    tokenizer.save_pretrained("./qwen2.5-curriculum-trained3")
+    model.save_pretrained("./qwen2.5-curriculum-trained4_3")
+    tokenizer.save_pretrained("./qwen2.5-curriculum-trained4_3")
     print("Training complete!")
 
 if __name__ == "__main__":
