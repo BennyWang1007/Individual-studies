@@ -11,8 +11,10 @@ from transformers import (
 
 from curriculum_utils import load_curriculum_datasets, DifficultyLevels
 
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Use only first GPU
 
-TRAINING = False
+TRAINING = True  # Set to False to skip training
 
 model_name = "Qwen/Qwen2.5-0.5B"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -169,6 +171,23 @@ def main():
     train_datasets = [dataset["train"] for dataset in split_dataset]
     eval_datasets = [dataset["test"] for dataset in split_dataset]
 
+    # make sure the datasets are divisible by the batch size
+    for i, dataset in enumerate(train_datasets):
+        if len(dataset) % BATCH_SIZE != 0:
+            train_datasets[i] = dataset.select(
+                range(len(dataset) - len(dataset) % BATCH_SIZE)
+            )
+
+    for i, dataset in enumerate(eval_datasets):
+        if len(dataset) % BATCH_SIZE != 0:
+            eval_datasets[i] = dataset.select(
+                range(len(dataset) - len(dataset) % BATCH_SIZE)
+            )
+
+    for i in range(len(train_datasets)):
+        assert len(train_datasets[i]) % BATCH_SIZE == 0
+        assert len(eval_datasets[i]) % BATCH_SIZE == 0
+
     assert isinstance(train_datasets[0], Dataset)
     assert isinstance(train_datasets[0][0], dict)
     assert isinstance(train_datasets[0][0]["text"], str)
@@ -220,11 +239,9 @@ def main():
 
         trainer = Trainer(
             model=model,
-            # args=training_args,
             args=get_training_args(DifficultyLevels(i)),
             train_dataset=tokenized_train_dataset,
             eval_dataset=tokenized_eval_dataset,
-            data_collator=custom_data_collator,
         )
         trainer.train()
 
@@ -266,7 +283,6 @@ def main():
             args=get_training_args(DifficultyLevels(i)),
             train_dataset=tokenized_train_dataset,
             eval_dataset=tokenized_eval_dataset,
-            data_collator=custom_data_collator,
         )
         trainer.train()
 
