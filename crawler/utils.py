@@ -1,5 +1,4 @@
 
-
 class TERM_COLORS:
     RED = "\033[91m"
     GREEN = "\033[92m"
@@ -9,6 +8,7 @@ class TERM_COLORS:
     CYAN = "\033[96m"
     WHITE = "\033[97m"
     ENDC = "\033[0m"
+
 
 class Logger:
 
@@ -27,7 +27,7 @@ class Logger:
         if name:
             return Logger(name)
         return self
-    
+
     def set_verbose_level(self, level: int):
         if level < 0 or level > 2:
             raise ValueError("Verbose level must be between 0 and 2.")

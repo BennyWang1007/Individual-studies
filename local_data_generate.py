@@ -1,10 +1,15 @@
-import time
+import json
 from tqdm import tqdm
 
 import ollama
 from ollama import ChatResponse, chat
 
-from utils import *
+from utils import (
+    get_rationale_prompt_no_gt_chinese_system,
+    get_rationale_prompt_no_gt_chinese_user,
+    legalize_filename,
+    load_udn_news
+)
 
 # MODELNAME = "deepseek-r1:14b"  # 60~80 sec
 # MODELNAME = "deepseek-r1:7b"  # 9.3 sec
@@ -13,18 +18,27 @@ from utils import *
 # MODELNAME = "qwen:32b"        # 25.77 sec
 # MODELNAME = "qwen2.5:32b"     # 26.7 sec
 # MODELNAME = "qwen2.5:72b"     # TLE
-MODELNAME = "qwen2.5:32b-instruct-q6_K" # 94.55 sec
+MODELNAME = "qwen2.5:32b-instruct-q6_K"  # 94.55 sec
 # MODELNAME = "qwen2.5:32b-instruct-q8_0" # mem-full, 42.73 sec
 
 
-def local_gen_response(news_list: list[str], modelname: str, filename: str) -> list[dict]:
+def local_gen_response(
+    news_list: list[str], modelname: str, filename: str
+) -> list[dict]:
+
     data: list[dict] = []
 
     for i, news in tqdm(enumerate(news_list)):
         sys_prompt = get_rationale_prompt_no_gt_chinese_system(news)
         user_prompt = get_rationale_prompt_no_gt_chinese_user(news)
 
-        gen_response: ChatResponse = chat(model=modelname, messages=[{"role": "system", "content": sys_prompt}, {"role": "user", "content": user_prompt}])
+        gen_response: ChatResponse = chat(
+            model=modelname,
+            messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+        )
         dat = {"news": news, "response": gen_response.message.content}
         data.append(dat)
 
@@ -47,11 +61,14 @@ test_news_list = test_news_list[FINISHED_COUNT:]
 print(f"{len(test_news_list)=}")
 
 
-GENARATED_RESPONSE_FILE = legalize_filename(f"generated_responses_{MODELNAME}.jsonl")
+GENARATED_RESPONSE_FILE = legalize_filename(
+    f"generated_responses_{MODELNAME}.jsonl"
+)
 print(f"{GENARATED_RESPONSE_FILE}")
 
+
 if __name__ == "__main__":
-    # ollama.pull(MODELNAME)
+    ollama.pull(MODELNAME)
 
     #  generate response using local model
     test_news_list = test_news_list[FINISHED_COUNT:]

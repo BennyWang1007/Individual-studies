@@ -11,7 +11,10 @@ from summarized_news import SummarizedNews
 corrupted_response_ids = []
 
 
-def load_data(filepath: str = "generated_responses.jsonl") -> list[NewsWithRationale]:
+def load_data(
+    filepath: str = "generated_responses.jsonl"
+) -> list[NewsWithRationale]:
+
     raw_data = []
     with open(filepath, "r", encoding="utf-8") as f:
         for line in f:
@@ -65,7 +68,8 @@ if __name__ == "__main__":
     print(f"Corrupted response ids: {corrupted_response_ids}")
     print(f"Total data: {len(data)}")
 
-    with open("generated_news_with_rationales_qwen2.5_32b-instruct-q6_K.jsonl", "w", encoding="utf-8") as f:
+    filename = "generated_news_with_rationales_qwen2.5_32b-instruct-q6_K.jsonl"
+    with open(filename, "w", encoding="utf-8") as f:
         for d in data:
             f.write(json.dumps(d.__dict__, ensure_ascii=False))
             f.write('\n')

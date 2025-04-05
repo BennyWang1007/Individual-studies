@@ -3,12 +3,12 @@ import json
 import os
 import requests
 
-from bs4 import BeautifulSoup
-from pydantic import BaseModel, Field, AnyHttpUrl
+from pydantic import BaseModel, Field
 from tldextract import tldextract
 
 from .exceptions import DomainMismatchException, HTTPException
 from .utils import Logger
+
 
 class Headline(BaseModel):
     title: str = Field(
@@ -36,8 +36,8 @@ class News(Headline):
     )
 
     def __str__(self) -> str:
-        return \
-f"""\
+        return (
+            f"""\
 Title: {self.title}
 Time: {self.time}
 URL: {self.url}
@@ -45,6 +45,7 @@ URL: {self.url}
 Content: {self.content}
 
 """
+        )
 
 
 class NewsWithSummary(News):
@@ -61,7 +62,7 @@ class NewsWithSummary(News):
 
     def __str__(self) -> str:
         return super().__str__() + \
-f"""\
+            f"""\
 Summary: {self.summary}
 
 Reason: {self.reason}\
@@ -75,10 +76,14 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
 
     SAVED_NEWS_DIR = os.path.join(os.path.dirname(__file__), "saved_news")
     SAVE_NEWS_FILE = "default_news.jsonl"   # default file to save news
-    
+
     CRAWLED_URLS_FILE = os.path.join(SAVED_NEWS_DIR, "crawled_urls.json")
-    CRAWLED_URLS_ONLY_FILE = os.path.join(SAVED_NEWS_DIR, "crawled_urls_only.json")
-    CRAWLED_FAILED_URLS_FILE = os.path.join(SAVED_NEWS_DIR, "crawled_failed_urls.json")
+    CRAWLED_URLS_ONLY_FILE = os.path.join(
+        SAVED_NEWS_DIR, "crawled_urls_only.json"
+    )
+    CRAWLED_FAILED_URLS_FILE = os.path.join(
+        SAVED_NEWS_DIR, "crawled_failed_urls.json"
+    )
 
     crawled_urls: list[tuple[str, str]]
     crawled_urls_only: list[str]
@@ -88,7 +93,6 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
     logger: Logger
     news: News | NewsWithSummary
 
-    
     @classmethod
     def class_init(cls, timeout: int = 10):
         cls.logger = Logger(__name__)
@@ -107,113 +111,125 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
         if os.path.exists(cls.CRAWLED_URLS_ONLY_FILE):
             with open(cls.CRAWLED_URLS_ONLY_FILE, "r", encoding="utf-8") as f:
                 cls.crawled_urls_only = json.load(f)
-                cls.logger.info(f"Loaded {len(cls.crawled_urls_only)} crawled URLs only")
+                crawled_count = len(cls.crawled_urls_only)
+                cls.logger.info(f"Loaded {crawled_count} crawled URLs only")
         else:
             cls.crawled_urls_only = []
 
         if os.path.exists(cls.CRAWLED_FAILED_URLS_FILE):
-            with open(cls.CRAWLED_FAILED_URLS_FILE, "r", encoding="utf-8") as f:
+            with open(
+                cls.CRAWLED_FAILED_URLS_FILE, "r", encoding="utf-8"
+            ) as f:
                 cls.crawled_failed_urls = json.load(f)
-                cls.logger.info(f"Loaded {len(cls.crawled_failed_urls)} crawled failed URLs")
+                failed_count = len(cls.crawled_failed_urls)
+                cls.logger.info(f"Loaded {failed_count} crawled failed URLs")
         else:
             cls.crawled_failed_urls = []
 
     def __init__(self, timeout: int = 10) -> None:
         self.class_init(timeout)
-        # self.logger = Logger(__name__).get_logger()
-        # self.logger.info(f"Initializing NewsCrawlerBase with timeout: {timeout} seconds.")
-        # NewsCrawlerBase.timeout = timeout
-        # if os.path.exists(self.CRAWLED_URLS_FILE):
-        #     with open(self.CRAWLED_URLS_FILE, "r", encoding="utf-8") as f:
-        #         self.crawled_urls = json.load(f)
-        #         self.logger.info(f"Loaded {len(self.crawled_urls)} crawled URLs")
-        #         # NewsCrawlerBase.logger.debug(f"Loaded crawled URLs from file: {NewsCrawlerBase.CRAWLED_URLS_FILE}")
-        #         # NewsCrawlerBase.logger.debug(f"Crawled URLs: {NewsCrawlerBase.crawled_urls}")
-        # else:
-        #     self.crawled_urls = []
-
-        # if os.path.exists(self.CRAWLED_URLS_ONLY_FILE):
-        #     with open(self.CRAWLED_URLS_ONLY_FILE, "r", encoding="utf-8") as f:
-        #         self.crawled_urls_only = json.load(f)
-        #         self.logger.info(f"Loaded {len(self.crawled_urls_only)} crawled URLs")
-        # else:
-        #     self.crawled_urls_only = []
 
     @abc.abstractmethod
     def get_headlines_keyword(
             self, search_term: str, page: int | tuple[int, int]
     ) -> list[Headline]:
         """
-        Searches for news headlines on the news website based on a given search term and returns a list of headlines.
+        Search for news headlines on the news website based on a given search
+        term.
 
-        This method searches through the entire news_website_url using the specified search term, and returns a list
-        of Headline namedtuples, where each Headline includes the title and URL of a news article. The page parameter
-        can be an integer representing a single page number or a tuple representing a range of page numbers to search
-        through.
-        # The offset and limit parameters apply to the resulting list of headlines, allowing you to skip a
-        # certain number of headlines and limit the number of headlines returned, respectively.
+        This method searches through the entire `news_website_url` using the
+        specified search term and returns a list of `Headline` objects. Each
+        `Headline` includes the title and URL of a news article. The `page`
+        parameter can be an integer representing a single page number or a
+        tuple representing a range of page numbers to search through.
 
-        :param search_term: A search term to search for news articles.
-        :param page: A page number (int) or a tuple of start and end page numbers (tuple[int, int]).
-        # :param offset: The number of headlines to skip from the beginning of the list.
-        # :param limit: The maximum number of headlines to return.
-        :return: A list of Headline namedtuple  s, each containing a title and a URL.
+        Args:
+            search_term (str): A search term to search for news articles.
+            page (int | tuple[int, int]): A page number or a tuple of start
+            and end page numbers.
+
+        Returns:
+            list[Headline]: A list of `Headline` objects, each containing a
+            title and a URL.
         """
         return NotImplemented
 
     @abc.abstractmethod
-    def parse(self, url: str, skip_if_crawed: bool = True) -> News | NewsWithSummary | None:
+    def parse(
+        self, url: str, skip_if_crawed: bool = True
+    ) -> News | NewsWithSummary | None:
         """
-        Given a news URL from the news website, fetch and parse the detailed news content.
+        Fetch and parse the detailed news content from a given news URL.
 
-        This method takes a URL that belongs to a news article on the news_website_url, retrieves the full content of
-        the news article, and returns it in the form of a News namedtuple. The News namedtuple includes the title,
-        URL, publication time, and content of the news article.
+        This method takes a URL that belongs to a news article on the
+        news_website_url, retrieves the full content of the news article,
+        and returns it in the form of a News namedtuple. The News namedtuple
+        includes the title, URL, publication time, and content of the news
+        article.
 
-        :param url: The URL of the news article to be fetched and parsed.
-        :return: A News namedtuple containing the title, URL, time, and content of the news article.
+        Args:
+            url (str): The URL of the news article to be fetched and parsed.
+
+        Returns:
+            News: A namedtuple containing the title, URL, time, and content
+            of the news article.
         """
 
         return NotImplemented
-        
 
     def validate_and_parse(self, url: str) -> News | NewsWithSummary | None:
         """
-        Validates the given URL and ensures that it belongs to the news website or its child URLs. If the URL is valid,
-        it proceeds with parsing the news content by invoking the `parse` method from the child class.
+        Validate the given URL and parse the news content.
 
-        This method first checks if the provided URL is valid for the current news website. If the URL is not valid,
-        it raises a `DomainMismatchException`. If the URL is valid, the method passes the URL to the `parse` method
-        (which should be implemented in the child class) to retrieve and parse the news content.
+        This method ensures that the provided URL belongs to the news website
+        or its child URLs. If the URL is valid, it invokes the `parse` method
+        from the child class to retrieve and parse the news content.
 
-        :param url: The URL of the news article to be validated and parsed.
-        :return: A `News` object containing the parsed news details (title, URL, time, and content).
-        :raises DomainMismatchException: If the URL does not belong to the allowed domain or its child URLs.
+        Args:
+            url (str): The URL of the news article to be validated and parsed.
+
+        Returns:
+            News | NewsWithSummary | None: A `News` or `NewsWithSummary` object
+            containing the parsed news details (title, URL, time, and content).
+
+        Raises:
+            DomainMismatchException: If the URL does not belong to the allowed
+            domain or its child URLs.
         """
-        # logger = Logger(__name__, "validate_and_parse").get_logger()
         if not self._is_valid_url(url):
             raise DomainMismatchException(url)
         self.logger.info(f"Valid URL: {url}")
         return self.parse(url)
-    
+
     @classmethod
-    def _request(cls, url: str, params: dict | None = None) -> requests.Response:
+    def _request(
+        cls, url: str, params: dict | None = None
+    ) -> requests.Response:
         try:
             response = requests.get(url, params=params, timeout=cls.timeout)
             response.raise_for_status()
             return response
-        
         except requests.exceptions.RequestException as e:
-            raise HTTPException(status_code=502, detail="Failed to perform request to external source.")
-
+            cls.logger.error(f"Request failed: {e}")
+            raise HTTPException(
+                status_code=502,
+                detail="Failed to perform request to external source."
+            )
 
     @staticmethod
     def legalize_filename(filename: str) -> str:
-        return filename.replace("/", "_").replace("\\", "_").replace(":", "_").replace("*", "_").replace("?", "_").replace("\"", "_").replace("<", "_").replace(">", "_").replace("|", "_")
-
+        invalid_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|']
+        for char in invalid_chars:
+            filename = filename.replace(char, '_')
+        return filename
 
     @classmethod
-    def save(cls, news: News | NewsWithSummary, save_folder: str = "", separate_file: bool = False) -> None:
+    def save(
+        cls,
+        news: News | NewsWithSummary,
+        save_folder: str = "",
+        separate_file: bool = False
+    ) -> None:
 
         if separate_file:
             filename = f"{news.title}.txt"
@@ -222,7 +238,7 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
         else:
             filename = cls.SAVE_NEWS_FILE
             filepath = os.path.join(cls.SAVED_NEWS_DIR, filename)
-        
+
         save_folder = os.path.join(cls.SAVED_NEWS_DIR, save_folder)
 
         # if os.path.exists(filepath):
@@ -248,7 +264,6 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
         cls.logger.info(f"Saved news article to file: {filename}")
         cls._add_crawled_url(news.url, filepath)
 
-
     @staticmethod
     def _parse_file(filepath: str) -> News | NewsWithSummary:
         # handle json file
@@ -259,11 +274,11 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
                     return NewsWithSummary(**data)
                 else:
                     return News(**data)
-        
+
         # only accept json or txt file
         if not filepath.endswith(".txt"):
             raise ValueError(f"Invalid file format: {filepath}")
-        
+
         # handle txt file
         with open(filepath, "r", encoding="utf-8") as file:
             lines = file.readlines()
@@ -280,7 +295,7 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
         else:
             content = "".join(else_lines)
             return News(title=title, url=url, time=time, content=content)
-        
+
         content = "".join(content_lines)
 
         for i, line in enumerate(else_lines):
@@ -294,8 +309,14 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
 
         summary = "".join(summary_lines)
         reason = "".join(reason_lines)
-        return NewsWithSummary(title=title, url=url, time=time, content=content, summary=summary, reason=reason)
-
+        return NewsWithSummary(
+            title=title,
+            url=url,
+            time=time,
+            content=content,
+            summary=summary,
+            reason=reason
+        )
 
     @classmethod
     def _add_crawled_url(cls, url: str, filepath: str):
@@ -307,7 +328,7 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
 
         with open(cls.CRAWLED_URLS_ONLY_FILE, "w") as f:
             json.dump(cls.crawled_urls_only, f, ensure_ascii=False, indent=4)
-    
+
         # cls.logger.info(f"Added crawled URL to file: {url}")
 
     @classmethod
@@ -319,14 +340,38 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
 
         cls.logger.error(f"Added crawled failed URL to file: {url}")
 
-    
     @classmethod
     def _url_crawled(cls, url: str) -> bool:
-        """ Return True if the URL has not been crawled before, and set the news attribute """
+        """
+        Check if a URL has been crawled before and set the `news` attribute
+        accordingly.
+
+        If the URL is found in the `crawled_failed_urls` list, it sets the
+        `news` attribute to a `News` object with a "Failed to crawl" title and
+        returns `True`.
+
+        If the URL is found in the `crawled_urls_only` list, it sets the `news`
+        attribute to either a `News` or `NewsWithSummary` object based on the
+        presence of a "summary" field in the data and returns `True`.
+
+        If the URL is not found in the file, a `RuntimeError` is raised.
+
+        If the URL has not been crawled, the method returns `False`.
+
+        Args:
+            url (str): The URL to check.
+        Returns:
+            bool: `True` if the URL has been crawled before, `False` otherwise.
+        Raises:
+            RuntimeError: If the URL is marked as crawled but cannot be found
+                          in the `SAVE_NEWS_FILE`.
+        """
         if url in cls.crawled_failed_urls:
-            cls.news = News(title="Failed to crawl", url=url, time="", content="")
+            cls.news = News(
+                title="Failed to crawl", url=url, time="", content=""
+            )
             return True
-        
+
         if url in cls.crawled_urls_only:
             with open(cls.SAVE_NEWS_FILE, "r", encoding="utf-8") as f:
                 for line in f:
@@ -338,21 +383,27 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
                             cls.news = News(**data)
                         # cls.logger.info(f"News found in class{cls}")
                         return True
-            raise RuntimeError(f"URL has been crawled before but not found in class{cls}")
+            raise RuntimeError(
+                f"URL has been crawled before but not found in class {cls}"
+            )
         return False
-
 
     def _is_valid_url(self, url: str) -> bool:
         """
         Check if the given URL belongs to the news website or its child URLs.
 
-        This method checks if the given URL belongs to the news_website_url or any of its child URLs. It returns True if
-        the URL is valid, and False otherwise.
+        This method checks if the given URL belongs to the `news_website_url`
+        or any of its child URLs. It returns True if the URL is valid, and
+        False otherwise.
 
-        :param url: The URL to be checked for validity.
-        :return: True if the URL is valid, False otherwise.
+        Args:
+            url (str): The URL to be checked for validity.
+
+        Returns:
+            bool: True if the URL is valid, False otherwise.
         """
-        main_domain = tldextract.extract(self.news_website_url).registered_domain
+        extracted = tldextract.extract(self.news_website_url)
+        main_domain = extracted.registered_domain
         url_domain = tldextract.extract(url).registered_domain
 
         if url_domain == main_domain:
