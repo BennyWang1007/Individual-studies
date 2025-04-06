@@ -1,20 +1,15 @@
 import json
-import os
-import sys
+# import os
+# import sys
 
 from enum import Enum
-from opencc import OpenCC
+# from opencc import OpenCC
 
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+# sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from news_with_rationale import NewsWithRationale
 from rationale import Rationale
 from summarized_news import SummarizedNews
-
-
-MODEL_BASE = "Qwen/Qwen2.5-0.5B-Instruct"
-MODEL_BASE_OLLAMA = "qwen2.5:0.5b-instruct"
-MODEL_DISTAL_FROM = "qwen2.5:32b-instruct-q6_K"
 
 
 class DifficultyLevels(Enum):

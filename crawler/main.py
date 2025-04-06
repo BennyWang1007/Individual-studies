@@ -5,44 +5,60 @@ from tqdm import tqdm
 from .udn_crawler import UDNCategory, UDNCategorys, UDNCrawler
 from .utils import Logger
 
-cur_page = 155
+MAX_NEWS_PER_FETCH = 100
+
+cur_page = 1
 
 
-def test_get_news_with_category(
+def get_news_with_category(
     catagory: UDNCategory,
     num: int = 10,
+    start_page: int = -1,
     logger: Logger = Logger("__main__")
 ) -> None:
 
     global cur_page
+
+    if start_page > 0:
+        cur_page = start_page
+
+    while num > MAX_NEWS_PER_FETCH:
+        get_news_with_category(catagory, MAX_NEWS_PER_FETCH, logger=logger)
+        num -= MAX_NEWS_PER_FETCH
+
     logger.info(f"Start to get {num} news from {catagory.name}")
-    count = 0
 
     with tqdm(
         total=num,
-        desc=f"Get {count} news from {catagory.name}"
+        desc=f"Get {num} news from {catagory.name}"
     ) as pbar:
-        while count < num:
+        while num > 0:
             headlines, next_page = UDNCrawler.get_headlines_catagory(
-                catagory, num - count, page=cur_page
+                catagory, num, page=cur_page
             )
-            for headline in headlines:
+            logger.debug(
+                f"Get {len(headlines)} news from {catagory.name} "
+                f"page {cur_page}-{next_page}"
+            )
+
+            unfetched_urls = set([headline.url for headline in headlines])
+            unfetched_urls -= UDNCrawler.crawled_urls_only
+            unfetched_urls -= UDNCrawler.crawled_failed_urls
+            for unfetched_url in unfetched_urls:
                 _ = UDNCrawler.fetch_and_save_news(
-                    headline.url, catagory.name, skip_if_crawled=True
+                    # since we have filter out the crawled urls
+                    unfetched_url, catagory.name, skip_if_crawled=False
                 )
                 if UDNCrawler.skipped:
-                    logger.info(f"Skipped {headline.title}, {headline.url}:")
+                    # logger.info(f"Skipped {headline.title}, {headline.url}:")
                     continue
-                count += 1
+                num -= 1
                 pbar.update(1)
-                rand_sleep = 0.1 + random.random() * 0.1
+                rand_sleep = (0.1 + random.random() * 0.1) / 2
                 time.sleep(rand_sleep)
 
             if next_page is not None:
                 cur_page = next_page
-            # rand_sleep = 0.5 + random.random() * 0.5
-            # time.sleep(rand_sleep)
-    logger.info(f"Get {count} news from {catagory.name}")
 
 
 def test_get_news_with_keywords(keywords: str, num: int = 10) -> None:
@@ -57,12 +73,18 @@ def test_get_news_with_keywords(keywords: str, num: int = 10) -> None:
         time.sleep(rand_sleep)
 
 
-def main() -> None:
+def crawler_main(num: int = 10, start_page: int = 1) -> None:
+    # init the crawler
     UDNCrawler()
-    # suppress the logger.info
-    UDNCrawler.logger.set_verbose_level(0)
-    test_get_news_with_category(UDNCategorys.INSTANT, 200)
+    UDNCrawler.logger.set_verbose_level(1)  # suppress the info log
+
+    crawler_logger = Logger("udn_crawler")
+    crawler_logger.set_verbose_level(4)  # to recieve debug log
+
+    get_news_with_category(
+        UDNCategorys.INSTANT, num, start_page, crawler_logger
+    )
 
 
 if __name__ == "__main__":
-    main()
+    crawler_main()

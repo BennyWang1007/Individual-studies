@@ -86,8 +86,8 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
     )
 
     crawled_urls: list[tuple[str, str]]
-    crawled_urls_only: list[str]
-    crawled_failed_urls: list[str]
+    crawled_urls_only: set[str]
+    crawled_failed_urls: set[str]
 
     timeout: int
     logger: Logger
@@ -110,21 +110,23 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
 
         if os.path.exists(cls.CRAWLED_URLS_ONLY_FILE):
             with open(cls.CRAWLED_URLS_ONLY_FILE, "r", encoding="utf-8") as f:
-                cls.crawled_urls_only = json.load(f)
+                crawled_urls_only_list = json.load(f)
+                cls.crawled_urls_only = set(crawled_urls_only_list)
                 crawled_count = len(cls.crawled_urls_only)
                 cls.logger.info(f"Loaded {crawled_count} crawled URLs only")
         else:
-            cls.crawled_urls_only = []
+            cls.crawled_urls_only = set()
 
         if os.path.exists(cls.CRAWLED_FAILED_URLS_FILE):
             with open(
                 cls.CRAWLED_FAILED_URLS_FILE, "r", encoding="utf-8"
             ) as f:
-                cls.crawled_failed_urls = json.load(f)
+                crawled_failed_urls_list = json.load(f)
+                cls.crawled_failed_urls = set(crawled_failed_urls_list)
                 failed_count = len(cls.crawled_failed_urls)
                 cls.logger.info(f"Loaded {failed_count} crawled failed URLs")
         else:
-            cls.crawled_failed_urls = []
+            cls.crawled_failed_urls = set()
 
     def __init__(self, timeout: int = 10) -> None:
         self.class_init(timeout)
@@ -321,24 +323,25 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
     @classmethod
     def _add_crawled_url(cls, url: str, filepath: str):
         cls.crawled_urls.append((url, filepath))
-        cls.crawled_urls_only.append(url)
+        cls.crawled_urls_only.add(url)
 
         with open(cls.CRAWLED_URLS_FILE, "w") as f:
             json.dump(cls.crawled_urls, f, ensure_ascii=False, indent=4)
 
         with open(cls.CRAWLED_URLS_ONLY_FILE, "w") as f:
-            json.dump(cls.crawled_urls_only, f, ensure_ascii=False, indent=4)
+            json.dump(
+                list(cls.crawled_urls_only), f, ensure_ascii=False, indent=4
+            )
 
         # cls.logger.info(f"Added crawled URL to file: {url}")
 
     @classmethod
     def _add_crawled_fail_url(cls, url: str):
-        cls.crawled_failed_urls.append(url)
-
+        cls.crawled_failed_urls.add(url)
         with open(cls.CRAWLED_FAILED_URLS_FILE, "w") as f:
-            json.dump(cls.crawled_failed_urls, f, ensure_ascii=False, indent=4)
-
-        cls.logger.error(f"Added crawled failed URL to file: {url}")
+            json.dump(
+                list(cls.crawled_failed_urls), f, ensure_ascii=False, indent=4
+            )
 
     @classmethod
     def _url_crawled(cls, url: str) -> bool:

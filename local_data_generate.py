@@ -4,6 +4,13 @@ from tqdm import tqdm
 import ollama
 from ollama import ChatResponse, chat
 
+from curriculum_training.gen_CHT_response import gen_zh_tw_response
+from curriculum_training.constants import (
+    MODEL_BASE,
+    MODEL_DISTAL_FROM,
+)
+from parse_generated_data import parse_response
+
 from utils import (
     get_rationale_prompt_no_gt_chinese_system,
     get_rationale_prompt_no_gt_chinese_user,
@@ -52,24 +59,61 @@ def local_gen_response(
     return data
 
 
-# FINISHED_COUNT = 230 + 313 + 2 + 676
-FINISHED_COUNT = 1201
-
-test_news_list = load_udn_news()
-test_news_list = test_news_list[FINISHED_COUNT:]
-
-print(f"{len(test_news_list)=}")
-
-
 GENARATED_RESPONSE_FILE = legalize_filename(
     f"generated_responses_{MODELNAME}.jsonl"
 )
-print(f"{GENARATED_RESPONSE_FILE}")
+# print(f"{GENARATED_RESPONSE_FILE}")
+
+GENARATED_NWR_FILE = legalize_filename(
+    f"generated_news_with_rationales_{MODELNAME}.jsonl"
+)
+# print(f"{GENARATED_NWR_FILE}")
+
+# FINISHED_COUNT = 230 + 313 + 2 + 676
+# FINISHED_COUNT = 4740
+
+# number of lines in GENARATED_RESPONSE_FILE
+FINISHED_NEWS_COUNT = 0
+with open(GENARATED_RESPONSE_FILE, "r", encoding="utf-8") as f:
+    for line in f:
+        FINISHED_NEWS_COUNT += 1
+print(f"Finished count: {FINISHED_NEWS_COUNT}")
+
+# number of lines in GENARATED_NWR_FILE
+FINISHED_NWR_COUNT = 0
+with open(GENARATED_NWR_FILE, "r", encoding="utf-8") as f:
+    for line in f:
+        FINISHED_NWR_COUNT += 1
+print(f"Finished response count: {FINISHED_NWR_COUNT}")
 
 
 if __name__ == "__main__":
+    # make sure the model is downloaded
     ollama.pull(MODELNAME)
 
-    #  generate response using local model
-    test_news_list = test_news_list[FINISHED_COUNT:]
-    _ = local_gen_response(test_news_list, MODELNAME, GENARATED_RESPONSE_FILE)
+    # load the news
+    test_news_list = load_udn_news()
+    test_news_list = test_news_list[FINISHED_NEWS_COUNT:]
+    print(f"{len(test_news_list)=}")
+
+    # generate response using local model
+    responses = local_gen_response(
+        test_news_list, MODELNAME, GENARATED_RESPONSE_FILE
+    )
+    print(f"Generated {len(responses)} responses")
+
+    # parse the response
+    parsed_data: list = parse_response(responses)
+    with open(GENARATED_NWR_FILE, "a", encoding="utf-8") as f:
+        for d in parsed_data:
+            f.write(json.dumps(d.__dict__, ensure_ascii=False) + "\n")
+
+    print(f"Parsed {len(parsed_data)} responses")
+
+    # generate zh-tw response MODEL_BASE and opencc
+    gen_zh_tw_response(
+        model_base=MODEL_BASE,
+        model_distal_from=MODEL_DISTAL_FROM,
+        start_index=FINISHED_NWR_COUNT,
+    )
+    print(f"Generated zh-tw responses from idx {FINISHED_NWR_COUNT}")

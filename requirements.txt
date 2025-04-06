@@ -1,0 +1,11 @@
+beautifulsoup4
+numpy
+ollama
+OpenCC
+pydantic
+requests
+scikit-learn
+tldextract
+torch
+tqdm
+transformers

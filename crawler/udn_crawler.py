@@ -117,7 +117,8 @@ class UDNCrawler(NewsCrawlerBase):
     # logger: Logger = Logger(__name__)
 
     crawled_urls: list[tuple[str, str]] = []  # (url, filepath)
-    crawled_failed_urls: list[str] = []
+    crawled_urls_only: set[str] = set()
+    crawled_failed_urls: set[str] = set()
 
     logger: Logger
     skipped: bool = False
@@ -393,7 +394,9 @@ class UDNCrawler(NewsCrawlerBase):
             )
 
         except AttributeError as e:
-            UDNCrawler.logger.error(f"Failed to extract news from: {url}\n{e}")
+            UDNCrawler.logger.warning(
+                f"Failed to extract news from: {url}\n{e}"
+            )
             cls._add_crawled_fail_url(url)
             return None
 
