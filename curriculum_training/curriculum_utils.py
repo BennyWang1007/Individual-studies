@@ -50,7 +50,8 @@ def load_generated_new_with_rationale(
 
 
 def load_curriculum_datasets(
-    dataset_name, difficulty_levels: DifficultyLevels
+    dataset_name, difficulty_levels: DifficultyLevels,
+    finished_ids: set[int] | None = None
 ) -> list[tuple[str, str, str]]:
     """
     Load datasets with increasing difficulty.
@@ -60,6 +61,13 @@ def load_curriculum_datasets(
     data: list[NewsWithRationale] = load_generated_new_with_rationale(
         dataset_name
     )
+    print(f"Loaded {len(data)} news with rationale")
+    if finished_ids is not None:
+        data = [
+            d for d in data if d.id not in finished_ids
+        ]
+    print(f"Filtered {len(data)} news with rationale")
+
     ret: list[tuple[str, str, str]] = []
 
     sys_str = PREFIX_OF_DIFFICULTY_LEVELS[difficulty_levels.value]

@@ -6,7 +6,7 @@ from opencc import OpenCC
 from news_with_rationale import NewsWithRationale
 from rationale import Rationale
 from summarized_news import SummarizedNews
-from utils import legalize_filename
+from utils import legalize_filename, load_udn_news
 
 from curriculum_training.constants import (
     MODEL_DISTAL_FROM
@@ -42,6 +42,8 @@ def parse_response(responses: list[dict]) -> list[NewsWithRationale]:
     cc = OpenCC('s2twp')
     data = []
 
+    news: list[str] = load_udn_news()
+
     for i, d in enumerate(responses):
         if i in corrupted_response_ids:
             continue
@@ -76,7 +78,8 @@ def parse_response(responses: list[dict]) -> list[NewsWithRationale]:
         # print(f'{essential_aspects=}')
         # print(f'{triples=}')
 
-        sum_news = SummarizedNews(d['news'], summary, i, [-1])
+        id = news.index(d['news'])
+        sum_news = SummarizedNews(d['news'], summary, id, [-1])
         rationale = Rationale(essential_aspects, triples, summary)
         data.append(NewsWithRationale(sum_news, rationale))
 

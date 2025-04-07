@@ -59,6 +59,36 @@ def local_gen_response(
     return data
 
 
+def print_int_set(int_set) -> None:
+    """
+    Print the set of integers in a readable format.
+    For example, if the set is {1, 2, 3, 5, 6, 7}, it will print "1-3, 5-7".
+    """
+    prev_id: int = -2
+    continuous_count: int = 0
+    id_list: list[int] = sorted(list(int_set))
+    out_strs: list[str] = []
+    for i in range(len(id_list)):
+        if id_list[i] == prev_id + 1:
+            prev_id += 1
+            continuous_count += 1
+            continue
+        else:
+            if continuous_count > 0:
+                out_strs.append(f"{prev_id - continuous_count}-{prev_id}")
+                continuous_count = 0
+                prev_id = id_list[i]
+            else:
+                if prev_id != -2:
+                    out_strs.append(f"{prev_id}")
+                prev_id = id_list[i]
+
+    if continuous_count > 0:
+        out_strs.append(f"{prev_id - continuous_count}-{prev_id}")
+
+    print(", ".join(out_strs))
+
+
 GENARATED_RESPONSE_FILE = legalize_filename(
     f"generated_responses_{MODELNAME}.jsonl"
 )
@@ -72,33 +102,53 @@ GENARATED_NWR_FILE = legalize_filename(
 # FINISHED_COUNT = 230 + 313 + 2 + 676
 # FINISHED_COUNT = 4740
 
-# number of lines in GENARATED_RESPONSE_FILE
-FINISHED_NEWS_COUNT = 0
-with open(GENARATED_RESPONSE_FILE, "r", encoding="utf-8") as f:
-    for line in f:
-        FINISHED_NEWS_COUNT += 1
-print(f"Finished count: {FINISHED_NEWS_COUNT}")
-
-# number of lines in GENARATED_NWR_FILE
-FINISHED_NWR_COUNT = 0
-with open(GENARATED_NWR_FILE, "r", encoding="utf-8") as f:
-    for line in f:
-        FINISHED_NWR_COUNT += 1
-print(f"Finished response count: {FINISHED_NWR_COUNT}")
-
 
 if __name__ == "__main__":
     # make sure the model is downloaded
     ollama.pull(MODELNAME)
 
+    # find finishde ids
+    finished_news_ids: set[int] = set()
+    with open(GENARATED_RESPONSE_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            news = json.loads(line)
+            if news["id"] in finished_news_ids:
+                print(f"Duplicated news id: {news['id']}")
+                continue
+            finished_news_ids.add(news["id"])
+
+    print(f"Finished news ids count: {len(finished_news_ids)}")
+
+    # find finished NWR ids
+    finished_NWR_ids: set[int] = set()
+    with open(GENARATED_NWR_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            news = json.loads(line)
+            if news["id"] in finished_NWR_ids:
+                print(f"Duplicated news id: {news['id']}")
+                continue
+            finished_NWR_ids.add(news["id"])
+
+    print(f"Finished NWR ids count: {len(finished_NWR_ids)}")
+
+    # combine the finished ids
+    finished_news_ids = finished_news_ids.union(finished_NWR_ids)
+
     # load the news
-    test_news_list = load_udn_news()
-    test_news_list = test_news_list[FINISHED_NEWS_COUNT:]
-    print(f"{len(test_news_list)=}")
+    news_list = load_udn_news()
+    print(f"Loaded {len(news_list)} news")
+
+    # remove the finished news
+    news_list = [
+        news_list[i] for i in range(len(news_list))
+        if i not in finished_news_ids
+    ]
+    print(f"Remains {len(news_list)} news")
+    # print_int_set(finished_news_ids)
 
     # generate response using local model
     responses = local_gen_response(
-        test_news_list, MODELNAME, GENARATED_RESPONSE_FILE
+        news_list, MODELNAME, GENARATED_RESPONSE_FILE
     )
     print(f"Generated {len(responses)} responses")
 
@@ -114,6 +164,6 @@ if __name__ == "__main__":
     gen_zh_tw_response(
         model_base=MODEL_BASE,
         model_distal_from=MODEL_DISTAL_FROM,
-        start_index=FINISHED_NWR_COUNT,
+        finished_ids=finished_news_ids,
     )
-    print(f"Generated zh-tw responses from idx {FINISHED_NWR_COUNT}")
+    print("Generated zh-tw responses")

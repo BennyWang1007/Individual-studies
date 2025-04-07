@@ -203,5 +203,5 @@ def load_udn_news() -> list[str]:
     with open("crawler/saved_news/udn_news.jsonl", "r", encoding="utf-8") as f:
         for line in f:
             data = json.loads(line)
-            news.append(data["content"])
+            news.append(data["content"].strip())
     return news

@@ -19,7 +19,8 @@ from utils import legalize_filename
 
 
 def gen_zh_tw_response(
-    model_base: str, model_distal_from: str, start_index: int = 0
+    model_base: str, model_distal_from: str,
+    finished_ids: set[int] | None = None,
 ) -> None:
     """
     Generate a translated response in Traditional Chinese (ZH-TW) using OpenCC.
@@ -37,9 +38,12 @@ def gen_zh_tw_response(
     )
 
     datasets = load_curriculum_datasets(
-        filename, DifficultyLevels.DIRECT_SUMMARY
+        filename, DifficultyLevels.DIRECT_SUMMARY, finished_ids
     )
-    datasets = datasets[start_index:]
+    if len(datasets) == 0:
+        print("No datasets loaded.")
+        return
+
     print(datasets[0])
 
     model = AutoModelForCausalLM.from_pretrained(model_base)
