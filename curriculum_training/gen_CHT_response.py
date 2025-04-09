@@ -1,5 +1,4 @@
 import json
-import os
 import sys
 from tqdm import tqdm
 
@@ -7,15 +6,15 @@ import torch
 from opencc import OpenCC
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-from .curriculum_utils import (
-    load_curriculum_datasets,
-    DifficultyLevels
-)
 from .constants import (
     MODEL_BASE,
     MODEL_DISTAL_FROM,
 )
-from utils import legalize_filename
+from .curriculum_utils import (
+    load_curriculum_datasets,
+    DifficultyLevels
+)
+from utils import get_news_with_rationale_filename, get_zh_tw_filename
 
 
 def gen_zh_tw_response(
@@ -28,14 +27,8 @@ def gen_zh_tw_response(
     # Initialize OpenCC for conversion
     cc = OpenCC('s2twp')
 
-    DIR = os.path.dirname(os.path.abspath(__file__))
-    filename = legalize_filename(
-        f"generated_news_with_rationales_{model_distal_from}.jsonl"
-    )
-    save_filename = os.path.join(
-        DIR,
-        legalize_filename(f"generated_TO_ZHT_responses_{model_base}.jsonl")
-    )
+    filename = get_news_with_rationale_filename(model_distal_from)
+    save_filename = get_zh_tw_filename(model_base)
 
     datasets = load_curriculum_datasets(
         filename, DifficultyLevels.DIRECT_SUMMARY, finished_ids
@@ -55,7 +48,9 @@ def gen_zh_tw_response(
         with open(save_filename, "w", encoding="utf-8") as f:
             pass
 
-    for i, (sys_prompt, user_prompt, _) in tqdm(enumerate(datasets)):
+    for i, (sys_prompt, user_prompt, _) in tqdm(
+        enumerate(datasets), total=len(datasets)
+    ):
         message = [
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": user_prompt}

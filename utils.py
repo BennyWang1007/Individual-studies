@@ -203,5 +203,22 @@ def load_udn_news() -> list[str]:
     with open("crawler/saved_news/udn_news.jsonl", "r", encoding="utf-8") as f:
         for line in f:
             data = json.loads(line)
+            if "content" not in data or not data["content"]:
+                continue
             news.append(data["content"].strip())
     return news
+
+
+def get_response_filename(model_name: str) -> str:
+    """ Get the response filename """
+    return legalize_filename(f"generated_responses_{model_name}.jsonl")
+
+
+def get_news_with_rationale_filename(model_name: str) -> str:
+    """ Get the news with rationale filename """
+    return legalize_filename(f"generated_nwr_{model_name}.jsonl")
+
+
+def get_zh_tw_filename(model_name: str) -> str:
+    """ Get the zh_tw filename """
+    return legalize_filename(f"generated_zh-tw_responses_{model_name}.jsonl")

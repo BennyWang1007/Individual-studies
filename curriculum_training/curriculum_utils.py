@@ -1,15 +1,11 @@
 import json
-# import os
-# import sys
 
 from enum import Enum
-# from opencc import OpenCC
-
-# sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from news_with_rationale import NewsWithRationale
 from rationale import Rationale
 from summarized_news import SummarizedNews
+from curriculum_training.constants import GENARATED_ZH_TW_FILE
 
 
 class DifficultyLevels(Enum):
@@ -80,10 +76,7 @@ def load_curriculum_datasets(
             # for d in data:
             #     # ret.append((d.article, ""))
             #     ret.append((system_str, d.article, ""))
-            filepath = (
-                "curriculum_training/"
-                "generated_TO_ZHT_responses_Qwen_Qwen2.5-0.5B-Instruct.jsonl"
-            )
+            filepath = GENARATED_ZH_TW_FILE
             with open(filepath, "r", encoding="utf-8") as f:
                 for line in f:
                     dat = json.loads(line)

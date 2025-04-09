@@ -14,7 +14,9 @@ from parse_generated_data import parse_response
 from utils import (
     get_rationale_prompt_no_gt_chinese_system,
     get_rationale_prompt_no_gt_chinese_user,
-    legalize_filename,
+    get_news_with_rationale_filename,
+    get_zh_tw_filename,
+    get_response_filename,
     load_udn_news
 )
 
@@ -30,12 +32,13 @@ MODELNAME = "qwen2.5:32b-instruct-q6_K"  # 94.55 sec
 
 
 def local_gen_response(
-    news_list: list[str], modelname: str, filename: str
+    news_list: list[str], modelname: str, filename: str,
+    id_list: list[int]
 ) -> list[dict]:
 
     data: list[dict] = []
 
-    for i, news in tqdm(enumerate(news_list)):
+    for i, news in tqdm(enumerate(news_list), total=len(news_list)):
         sys_prompt = get_rationale_prompt_no_gt_chinese_system(news)
         user_prompt = get_rationale_prompt_no_gt_chinese_user(news)
 
@@ -46,7 +49,12 @@ def local_gen_response(
                 {"role": "user", "content": user_prompt}
             ]
         )
-        dat = {"news": news, "response": gen_response.message.content}
+        # dat = {"news": news, "response": gen_response.message.content}
+        dat = {
+            "id": id_list[i],
+            "news": news,
+            "response": gen_response.message.content
+        }
         data.append(dat)
 
         # print(f"News {i+FINISHED_COUNT} done:")
@@ -89,18 +97,13 @@ def print_int_set(int_set) -> None:
     print(", ".join(out_strs))
 
 
-GENARATED_RESPONSE_FILE = legalize_filename(
-    f"generated_responses_{MODELNAME}.jsonl"
-)
+GENARATED_RESPONSE_FILE = get_response_filename(MODELNAME)
 # print(f"{GENARATED_RESPONSE_FILE}")
 
-GENARATED_NWR_FILE = legalize_filename(
-    f"generated_news_with_rationales_{MODELNAME}.jsonl"
-)
+GENARATED_NWR_FILE = get_news_with_rationale_filename(MODELNAME)
 # print(f"{GENARATED_NWR_FILE}")
 
-# FINISHED_COUNT = 230 + 313 + 2 + 676
-# FINISHED_COUNT = 4740
+GENERATE_ZH_TW_FILE = get_zh_tw_filename(MODEL_BASE)
 
 
 if __name__ == "__main__":
@@ -131,11 +134,18 @@ if __name__ == "__main__":
 
     print(f"Finished NWR ids count: {len(finished_NWR_ids)}")
 
-    # combine the finished ids
-    finished_news_ids = finished_news_ids.union(finished_NWR_ids)
+    finished_zh_tw_ids: set[int] = set()
+    with open(GENERATE_ZH_TW_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            news = json.loads(line)
+            if news["id"] in finished_zh_tw_ids:
+                print(f"Duplicated news id: {news['id']}")
+                continue
+            finished_zh_tw_ids.add(news["id"])
+    print(f"Finished zh-tw ids count: {len(finished_zh_tw_ids)}")
 
     # load the news
-    news_list = load_udn_news()
+    news_list: list[str] = load_udn_news()
     print(f"Loaded {len(news_list)} news")
 
     # remove the finished news
@@ -143,12 +153,18 @@ if __name__ == "__main__":
         news_list[i] for i in range(len(news_list))
         if i not in finished_news_ids
     ]
+    id_list: list[int] = [
+        i for i in range(len(news_list))
+        if i not in finished_news_ids
+    ]
     print(f"Remains {len(news_list)} news")
     # print_int_set(finished_news_ids)
 
+    # exit()
+
     # generate response using local model
     responses = local_gen_response(
-        news_list, MODELNAME, GENARATED_RESPONSE_FILE
+        news_list, MODELNAME, GENARATED_RESPONSE_FILE, id_list
     )
     print(f"Generated {len(responses)} responses")
 
@@ -164,6 +180,6 @@ if __name__ == "__main__":
     gen_zh_tw_response(
         model_base=MODEL_BASE,
         model_distal_from=MODEL_DISTAL_FROM,
-        finished_ids=finished_news_ids,
+        finished_ids=finished_zh_tw_ids
     )
     print("Generated zh-tw responses")

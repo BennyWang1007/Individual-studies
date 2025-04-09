@@ -2,19 +2,20 @@
 import json
 
 from opencc import OpenCC
+from tqdm import tqdm
 
+from curriculum_training.constants import MODEL_DISTAL_FROM
 from news_with_rationale import NewsWithRationale
 from rationale import Rationale
 from summarized_news import SummarizedNews
-from utils import legalize_filename, load_udn_news
-
-from curriculum_training.constants import (
-    MODEL_DISTAL_FROM
+from utils import (
+    load_udn_news,
+    get_response_filename,
+    get_news_with_rationale_filename,
 )
 
 
 MODELNAME = MODEL_DISTAL_FROM
-corrupted_response_ids = []
 
 
 def load_response(
@@ -24,9 +25,7 @@ def load_response(
     if filepath is None:
         if model_name == "":
             raise ValueError("Either filepath or model_name must be provided.")
-        filepath = legalize_filename(
-            f"generated_responses_{model_name}.jsonl"
-        )
+        filepath = get_response_filename(model_name)
         print(f"Loading from {filepath}")
 
     with open(filepath, "r", encoding="utf-8") as f:
@@ -38,13 +37,13 @@ def load_response(
 
 def parse_response(responses: list[dict]) -> list[NewsWithRationale]:
 
-    global corrupted_response_ids
     cc = OpenCC('s2twp')
-    data = []
+    corrupted_response_ids: set[int] = set()
+    data: list[NewsWithRationale] = []
 
     news: list[str] = load_udn_news()
 
-    for i, d in enumerate(responses):
+    for i, d in tqdm(enumerate(responses), total=len(responses)):
         if i in corrupted_response_ids:
             continue
 
@@ -55,8 +54,8 @@ def parse_response(responses: list[dict]) -> list[NewsWithRationale]:
         s = d["response"]
 
         if "核心要素：" not in s or "三元組：" not in s or "生成摘要：" not in s:
-            print(f"Corrupted response at index {i}")
-            corrupted_response_ids.append(i)
+            # print(f"Corrupted response at index {i}")
+            corrupted_response_ids.add(i)
             continue
 
         idx1, idx2, idx3 = s.find("核心要素："), s.find("三元組："), s.find("生成摘要：")
@@ -83,17 +82,16 @@ def parse_response(responses: list[dict]) -> list[NewsWithRationale]:
         rationale = Rationale(essential_aspects, triples, summary)
         data.append(NewsWithRationale(sum_news, rationale))
 
+    print(f"Parsed {len(data)} responses")
+    print(f"Corrupted response ids: {sorted(corrupted_response_ids)}")
+
     return data
 
 
 if __name__ == "__main__":
     data = parse_response(load_response(model_name=MODELNAME))
-    print(f"Corrupted response ids: {corrupted_response_ids}")
-    print(f"Total data: {len(data)} responses")
 
-    filename = legalize_filename(
-        f"generated_news_with_rationales_{MODELNAME}.jsonl"
-    )
+    filename = get_news_with_rationale_filename(MODELNAME)
 
     with open(filename, "w", encoding="utf-8") as f:
         for d in data:
