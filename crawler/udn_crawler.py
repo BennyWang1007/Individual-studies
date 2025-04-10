@@ -292,10 +292,13 @@ class UDNCrawler(NewsCrawlerBase):
 
         except requests.exceptions.RequestException as e:
             UDNCrawler.logger.error(f"Request failed: {e}")
-            raise HTTPException(
-                status_code=502,
-                detail="Failed to perform request to external source."
-            )
+            # raise HTTPException(
+            #     status_code=502,
+            #     detail="Failed to perform request to external source."
+            # )
+            import time
+            time.sleep(3)
+            return UDNCrawler.__perform_request(url, params)
 
     @staticmethod
     def __fetch_headlines(page: int, search_term: str) -> list[Headline]:

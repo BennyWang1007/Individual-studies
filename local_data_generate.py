@@ -36,6 +36,7 @@ def local_gen_response(
     id_list: list[int]
 ) -> list[dict]:
 
+    assert len(news_list) == len(id_list)
     data: list[dict] = []
 
     for i, news in tqdm(enumerate(news_list), total=len(news_list)):
@@ -146,15 +147,16 @@ if __name__ == "__main__":
 
     # load the news
     news_list: list[str] = load_udn_news()
-    print(f"Loaded {len(news_list)} news")
+    news_count: int = len(news_list)
+    print(f"Loaded {news_count} news")
 
     # remove the finished news
     news_list = [
-        news_list[i] for i in range(len(news_list))
+        news_list[i] for i in range(news_count)
         if i not in finished_news_ids
     ]
     id_list: list[int] = [
-        i for i in range(len(news_list))
+        i for i in range(news_count)
         if i not in finished_news_ids
     ]
     print(f"Remains {len(news_list)} news")
