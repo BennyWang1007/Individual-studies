@@ -1,4 +1,5 @@
 import json
+from functools import lru_cache
 
 from enum import Enum
 
@@ -6,6 +7,9 @@ from news_with_rationale import NewsWithRationale
 from rationale import Rationale
 from summarized_news import SummarizedNews
 from curriculum_training.constants import GENARATED_ZH_TW_FILE
+from crawler.utils import Logger
+
+curriculum_utils_logger = Logger("curriculum_utils", verbose_level=3)
 
 
 class DifficultyLevels(Enum):
@@ -25,6 +29,7 @@ PREFIX_OF_DIFFICULTY_LEVELS = [
 ]
 
 
+@lru_cache(maxsize=1)
 def load_generated_new_with_rationale(
     filepath: str = "generated_news_with_rationales.jsonl"
 ) -> list[NewsWithRationale]:
@@ -41,7 +46,7 @@ def load_generated_new_with_rationale(
                 )
             ))
 
-    # print(f"Loaded {len(data)} news with rationale")
+    curriculum_utils_logger.info(f"Loaded {len(data)} news with rationale")
     return data
 
 
@@ -57,12 +62,12 @@ def load_curriculum_datasets(
     data: list[NewsWithRationale] = load_generated_new_with_rationale(
         dataset_name
     )
-    print(f"Loaded {len(data)} news with rationale")
+    # print(f"Loaded {len(data)} news with rationale")
     if finished_ids is not None:
         data = [
             d for d in data if d.id not in finished_ids
         ]
-    print(f"Filtered {len(data)} news with rationale")
+    # print(f"Filtered {len(data)} news with rationale")
 
     ret: list[tuple[str, str, str]] = []
 
