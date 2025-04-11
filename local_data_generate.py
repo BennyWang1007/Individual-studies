@@ -9,7 +9,7 @@ from curriculum_training.constants import (
     MODEL_BASE,
     MODEL_DISTAL_FROM,
 )
-from parse_generated_data import parse_response
+from parse_generated_data import parse_response, load_response
 
 from utils import (
     get_rationale_prompt_no_gt_chinese_system,
@@ -20,6 +20,8 @@ from utils import (
     load_udn_news
 )
 
+from crawler.utils import Logger
+
 # MODELNAME = "deepseek-r1:14b"  # 60~80 sec
 # MODELNAME = "deepseek-r1:7b"  # 9.3 sec
 # MODELNAME = "qwen:7b"         # 2.46 sec
@@ -29,6 +31,8 @@ from utils import (
 # MODELNAME = "qwen2.5:72b"     # TLE
 MODELNAME = "qwen2.5:32b-instruct-q6_K"  # 94.55 sec
 # MODELNAME = "qwen2.5:32b-instruct-q8_0" # mem-full, 42.73 sec
+
+gen_logger = Logger("data_gen", verbose_level=3)
 
 
 def local_gen_response(
@@ -95,15 +99,11 @@ def print_int_set(int_set) -> None:
     if continuous_count > 0:
         out_strs.append(f"{prev_id - continuous_count}-{prev_id}")
 
-    print(", ".join(out_strs))
+    gen_logger.info(", ".join(out_strs))
 
 
 GENARATED_RESPONSE_FILE = get_response_filename(MODELNAME)
-# print(f"{GENARATED_RESPONSE_FILE}")
-
 GENARATED_NWR_FILE = get_news_with_rationale_filename(MODELNAME)
-# print(f"{GENARATED_NWR_FILE}")
-
 GENERATE_ZH_TW_FILE = get_zh_tw_filename(MODEL_BASE)
 
 
@@ -117,11 +117,10 @@ if __name__ == "__main__":
         for line in f:
             news = json.loads(line)
             if news["id"] in finished_news_ids:
-                print(f"Duplicated news id: {news['id']}")
+                gen_logger.warning(f"Duplicated news id: {news['id']}")
                 continue
             finished_news_ids.add(news["id"])
-
-    print(f"Finished news ids count: {len(finished_news_ids)}")
+    gen_logger.info(f"Finished news ids count: {len(finished_news_ids)}")
 
     # find finished NWR ids
     finished_NWR_ids: set[int] = set()
@@ -129,26 +128,25 @@ if __name__ == "__main__":
         for line in f:
             news = json.loads(line)
             if news["id"] in finished_NWR_ids:
-                print(f"Duplicated news id: {news['id']}")
+                gen_logger.warning(f"Duplicated NWR id: {news['id']}")
                 continue
             finished_NWR_ids.add(news["id"])
-
-    print(f"Finished NWR ids count: {len(finished_NWR_ids)}")
+    gen_logger.info(f"Finished NWR ids count: {len(finished_NWR_ids)}")
 
     finished_zh_tw_ids: set[int] = set()
     with open(GENERATE_ZH_TW_FILE, "r", encoding="utf-8") as f:
         for line in f:
             news = json.loads(line)
             if news["id"] in finished_zh_tw_ids:
-                print(f"Duplicated news id: {news['id']}")
+                gen_logger.warning(f"Duplicated zh-tw id: {news['id']}")
                 continue
             finished_zh_tw_ids.add(news["id"])
-    print(f"Finished zh-tw ids count: {len(finished_zh_tw_ids)}")
+    gen_logger.info(f"Finished zh-tw ids count: {len(finished_zh_tw_ids)}")
 
     # load the news
     news_list: list[str] = load_udn_news()
     news_count: int = len(news_list)
-    print(f"Loaded {news_count} news")
+    gen_logger.info(f"Loaded {news_count} news")
 
     # remove the finished news
     news_list = [
@@ -159,24 +157,26 @@ if __name__ == "__main__":
         i for i in range(news_count)
         if i not in finished_news_ids
     ]
-    print(f"Remains {len(news_list)} news")
+    gen_logger.info(f"Remains {len(news_list)} response to generate")
     # print_int_set(finished_news_ids)
 
     # exit()
 
     # generate response using local model
+    responses: list[dict] = []
     responses = local_gen_response(
         news_list, MODELNAME, GENARATED_RESPONSE_FILE, id_list
     )
-    print(f"Generated {len(responses)} responses")
+    gen_logger.info(f"Generated {len(responses)} responses")
 
     # parse the response
-    parsed_data: list = parse_response(responses)
-    with open(GENARATED_NWR_FILE, "a", encoding="utf-8") as f:
-        for d in parsed_data:
-            f.write(json.dumps(d.__dict__, ensure_ascii=False) + "\n")
+    # parsed_data: list = parse_response(responses)
+    # with open(GENARATED_NWR_FILE, "a", encoding="utf-8") as f:
+    #     for d in parsed_data:
+    #         f.write(json.dumps(d.__dict__, ensure_ascii=False) + "\n")
+    parsed_data = parse_response(load_response(model_name=MODELNAME))
 
-    print(f"Parsed {len(parsed_data)} responses")
+    gen_logger.info(f"Parsed {len(parsed_data)} responses")
 
     # generate zh-tw response MODEL_BASE and opencc
     gen_zh_tw_response(
@@ -184,4 +184,4 @@ if __name__ == "__main__":
         model_distal_from=MODEL_DISTAL_FROM,
         finished_ids=finished_zh_tw_ids
     )
-    print("Generated zh-tw responses")
+    gen_logger.info("Generated zh-tw responses")
