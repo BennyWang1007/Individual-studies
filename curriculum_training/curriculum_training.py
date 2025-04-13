@@ -15,7 +15,10 @@ from .constants import GENARATED_NWR_FILE, MODEL_BASE
 from .curriculum_utils import DifficultyLevels, load_curriculum_datasets
 from crawler.utils import Logger, TERM_COLORS
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Use only first GPU
+USE_GPU = True and torch.cuda.is_available()
+
+if USE_GPU:
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Use only first GPU
 
 training_logger = Logger("training", verbose_level=3)
 training_logger.info("curriculum_training.py started.")
@@ -39,9 +42,12 @@ MAX_LENGTH = 1024
 BATCH_SIZE = 8
 EPOCH = 3
 
-device = torch.device("cuda:0")
-# device = "cuda" if torch.cuda.is_available() else "cpu"
-# device = "cpu"
+if USE_GPU:
+    training_logger.info("Using GPU for training.")
+    device = torch.device("cuda:0")
+else:
+    training_logger.info("Using CPU for training.")
+    device = torch.device("cpu")
 
 
 def get_training_args(difficulty_level: DifficultyLevels):
@@ -74,7 +80,7 @@ def get_training_args(difficulty_level: DifficultyLevels):
         report_to=["tensorboard"],
         learning_rate=learning_rate,
         dataloader_drop_last=True,
-        # use_cpu=True
+        use_cpu=(not USE_GPU),
     )
 
 
