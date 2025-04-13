@@ -143,6 +143,8 @@ if __name__ == "__main__":
             finished_zh_tw_ids.add(news["id"])
     gen_logger.info(f"Finished zh-tw ids count: {len(finished_zh_tw_ids)}")
 
+    finished_news_ids = finished_news_ids.union(finished_NWR_ids)
+
     # load the news
     news_list: list[str] = load_udn_news()
     news_count: int = len(news_list)
@@ -170,10 +172,6 @@ if __name__ == "__main__":
     gen_logger.info(f"Generated {len(responses)} responses")
 
     # parse the response
-    # parsed_data: list = parse_response(responses)
-    # with open(GENARATED_NWR_FILE, "a", encoding="utf-8") as f:
-    #     for d in parsed_data:
-    #         f.write(json.dumps(d.__dict__, ensure_ascii=False) + "\n")
     parsed_data = parse_response(load_response(model_name=MODELNAME))
 
     gen_logger.info(f"Parsed {len(parsed_data)} responses")
