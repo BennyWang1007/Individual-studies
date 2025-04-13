@@ -1,4 +1,5 @@
 import os
+import random
 import time
 
 import torch
@@ -27,6 +28,12 @@ model_name = model_path.split("/")[-1]
 training_logger.info(f"Fine-tuning model: {model_name}")
 
 tokenizer = AutoTokenizer.from_pretrained(model_path)
+
+DATASET_NAME = GENARATED_NWR_FILE
+# count the number of news in the dataset
+with open(DATASET_NAME, "r", encoding="utf-8") as f:
+    news_count = sum(1 for _ in f)
+training_logger.info(f"Total news count: {news_count}")
 
 MAX_LENGTH = 1024
 BATCH_SIZE = 8
@@ -145,22 +152,76 @@ def custom_data_collator(features):
     return batch
 
 
-def curriculum_trianing_main() -> None:
+def curriculum_training(
+    train_datasets, eval_datasets, states: list[DifficultyLevels]
+):
+    """
+    Curriculum training for the model
 
-    dataset_name = GENARATED_NWR_FILE
+    Args:
+        train_datasets: list of tokenized training datasets
+        eval_datasets: list of tokenized evaluation datasets
+        states: list of difficulty levels to train on
+    """
+    start_time = time.time()
+    ls = len(states)  # length of the states
+    if TRAINING:
+        model = AutoModelForCausalLM.from_pretrained(model_path).to(device)
+
+    # train progressively on harder datasets
+    for difficulty_level in states:
+        i = difficulty_level.value
+        train_dataset, eval_dataset = train_datasets[i], eval_datasets[i]
+
+        print_str = "Training on difficulty " + DifficultyLevels(i).name
+        training_logger.info(print_str.center(80, "-"))
+
+        if not TRAINING:
+            training_logger.info("Skipping training...")
+            continue
+
+        trainer = Trainer(
+            model=model,
+            args=get_training_args(DifficultyLevels(i)),
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+        )
+
+        cur_start_time = time.time()
+        trainer.train()
+        cur_end_time = time.time()
+
+        training_logger.info(
+            f"Training time for difficulty {DifficultyLevels(i).name}: "
+            f"{cur_end_time - cur_start_time:.2f} sec"
+        )
+
+    if TRAINING:
+        # save the final model
+        savename = f"./{model_name}-curriculum_{news_count}news_{ls}stage_A100"
+        model.save_pretrained(savename)
+        tokenizer.save_pretrained(savename)
+        training_logger.info(f"Model saved to {savename}")
+
+    end_time = time.time()
+    training_logger.info(
+        f"Total training time ({ls} stage): {end_time - start_time:.2f} sec\n"
+    )
+    training_logger.log(
+        f"Training {ls} stage complete!", "SUCCESS", TERM_COLORS.GREEN
+    )
+
+
+def curriculum_trianing_main() -> None:
 
     curriculum_texts: list[list[dict]] = []
 
-    # count the number of news in the dataset
-    with open(dataset_name, "r", encoding="utf-8") as f:
-        news_count = sum(1 for _ in f)
-    training_logger.info(f"Total news count: {news_count}")
-
     for difficulty_level in DifficultyLevels:
-        dataset = load_curriculum_datasets(dataset_name, difficulty_level)
-
+        dataset = load_curriculum_datasets(DATASET_NAME, difficulty_level)
+        random.seed(42)
+        random.shuffle(dataset)
         # for demo purpose
-        # dataset = dataset[:10]
+        # dataset = dataset[:40]
 
         texts: list[dict] = []  # a list contains the input and output texts
         for i, (sys_prompt, user_prompt, out_str) in enumerate(dataset):
@@ -204,6 +265,7 @@ def curriculum_trianing_main() -> None:
             "difficulty": [i] * len(dataset)  # Repeats difficulty level
         }) for i, dataset in enumerate(curriculum_texts)
     ]
+    del curriculum_texts
 
     # split the dataset into training and evaluation sets
     split_dataset = [
@@ -235,6 +297,19 @@ def curriculum_trianing_main() -> None:
     assert isinstance(train_datasets[0][0]["input"], str)
     assert isinstance(train_datasets[0][0]["output"], str)
 
+    # tokenize the datasets
+    for i in range(len(train_datasets)):
+        train_dataset, eval_dataset = train_datasets[i], eval_datasets[i]
+        tokenized_train_dataset = train_dataset.map(
+            tokenize_function, batched=True
+        )
+        tokenized_eval_dataset = eval_dataset.map(
+            tokenize_function, batched=True
+        )
+        train_datasets[i] = tokenized_train_dataset
+        eval_datasets[i] = tokenized_eval_dataset
+
+    # check the shape of the datasets
     for difficulty_level, (train_dataset, eval_dataset) in enumerate(
         zip(train_datasets, eval_datasets)
     ):
@@ -243,110 +318,32 @@ def curriculum_trianing_main() -> None:
             f"{len(train_dataset)} training samples, "
             f"{len(eval_dataset)} evaluation samples"
         )
+        check_batch_shape(train_dataset)
+        check_batch_shape(eval_dataset)
 
-    total_train_samples = sum(
-        len(train_dataset) for train_dataset in train_datasets
-    )
-    total_eval_samples = sum(
-        len(eval_dataset) for eval_dataset in eval_datasets
-    )
+    total_train_samples = sum(len(dataset) for dataset in train_datasets)
+    total_eval_samples = sum(len(dataset) for dataset in eval_datasets)
     training_logger.info(f"Total training   samples: {total_train_samples}")
     training_logger.info(f"Total evaluation samples: {total_eval_samples}")
 
     """ ---------------- Curriculum Training for 5 stages ---------------- """
-    if TRAINING:
-        model = AutoModelForCausalLM.from_pretrained(model_path).to(device)
-
-    # train progressively on harder datasets
-    for i, (train_dataset, eval_dataset) in enumerate(
-        zip(train_datasets, eval_datasets)
-    ):
-        print_str = "Training on difficulty " + DifficultyLevels(i).name
-        cnt, cnt1 = 40 - len(print_str) // 2, 40 - (len(print_str) + 1) // 2
-        training_logger.info(f"{"-" * cnt}{print_str}{"-" * cnt1}")
-
-        tokenized_train_dataset = train_dataset.map(
-            tokenize_function, batched=True
-        )
-        tokenized_eval_dataset = eval_dataset.map(
-            tokenize_function, batched=True
-        )
-
-        # print("Checking batch shapes...")
-        check_batch_shape(tokenized_train_dataset)
-
-        # print(train_dataset[0])
-        # print(eval_dataset[0])
-
-        if not TRAINING:
-            training_logger.info("Skipping training...")
-            continue
-
-        trainer = Trainer(
-            model=model,
-            args=get_training_args(DifficultyLevels(i)),
-            train_dataset=tokenized_train_dataset,
-            eval_dataset=tokenized_eval_dataset,
-        )
-        start_time = time.time()
-        trainer.train()
-        end_time = time.time()
-        training_logger.info(f"Training time: {end_time - start_time:.2f} sec")
-
-    if TRAINING:
-        # save the final model
-        savename = f"./{model_name}-curriculum_{news_count}news_5stage_A100"
-        model.save_pretrained(savename)
-        tokenizer.save_pretrained(savename)
-        training_logger.info(f"Model saved to {savename}")
+    stages = [
+        DifficultyLevels.TO_ZHT,
+        DifficultyLevels.ESSENTIAL_ASPECTS,
+        DifficultyLevels.TRIPLES,
+        DifficultyLevels.SUMMARY,
+        DifficultyLevels.DIRECT_SUMMARY,
+    ]
+    curriculum_training(train_datasets, eval_datasets, stages)
 
     """ ---------------- Curriculum Training for 4 stages ---------------- """
-
-    if TRAINING:
-        model = AutoModelForCausalLM.from_pretrained(model_path).to(device)
-
-    # train progressively on harder datasets, skip the first stage
-    for i, (train_dataset, eval_dataset) in enumerate(
-        zip(train_datasets, eval_datasets)
-    ):
-        if i == 0:
-            continue
-
-        print_str = "Training on difficulty " + DifficultyLevels(i).name
-        cnt, cnt1 = 40 - len(print_str) // 2, 40 - (len(print_str) + 1) // 2
-        training_logger.info(f"{"-" * cnt}{print_str}{"-" * cnt1}")
-
-        tokenized_train_dataset = train_dataset.map(
-            tokenize_function, batched=True
-        )
-        tokenized_eval_dataset = eval_dataset.map(
-            tokenize_function, batched=True
-        )
-
-        # check the batch shape
-        check_batch_shape(tokenized_train_dataset)
-
-        if not TRAINING:
-            training_logger.info("Skipping training...")
-            continue
-
-        trainer = Trainer(
-            model=model,
-            args=get_training_args(DifficultyLevels(i)),
-            train_dataset=tokenized_train_dataset,
-            eval_dataset=tokenized_eval_dataset,
-        )
-        start_time = time.time()
-        trainer.train()
-        end_time = time.time()
-        training_logger.info(f"Training time: {end_time - start_time:.2f} sec")
-
-    if TRAINING:
-        # save the final model
-        savename = f"./{model_name}-curriculum_{news_count}news_4stage_A100"
-        model.save_pretrained(savename)
-        tokenizer.save_pretrained(savename)
-        training_logger.info(f"Model saved to {savename}")
+    stages = [
+        DifficultyLevels.ESSENTIAL_ASPECTS,
+        DifficultyLevels.TRIPLES,
+        DifficultyLevels.SUMMARY,
+        DifficultyLevels.DIRECT_SUMMARY,
+    ]
+    curriculum_training(train_datasets, eval_datasets, stages)
 
     training_logger.log("Training complete!", "SUCCESS", TERM_COLORS.GREEN)
 
