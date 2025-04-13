@@ -3,41 +3,70 @@ import json
 import os
 import requests
 
-from pydantic import BaseModel, Field
+from dataclasses import field, dataclass
 from tldextract import tldextract
 
 from .exceptions import DomainMismatchException, HTTPException
 from .utils import Logger
 
 
-class Headline(BaseModel):
-    title: str = Field(
-        default=...,
-        examples=["Title of the article"],
-        description="The title of the article"
+@dataclass
+class Headline:
+    title: str = field(
+        default="",
+        metadata={
+            "examples": ["Title of the article"],
+            "description": "The title of the article"
+        }
     )
-    url: str = Field(
-        default=...,
-        examples=["https://www.example.com"],
-        description="The URL of the article"
+    url: str = field(
+        default="",
+        metadata={
+            "examples": ["https://www.example.com"],
+            "description": "The URL of the article"
+        }
     )
 
-
-class News(Headline):
-    time: str = Field(
-        default=...,
-        examples=["2021-10-01T00:00:00"],
-        description="The time the article was published"
-    )
-    content: str = Field(
-        default=...,
-        examples=["Content of the article"],
-        description="The content of the article"
-    )
+    def __post_init__(self):
+        self.title = self.title.strip()
+        self.url = self.url.strip()
+        if not self.title:
+            raise ValueError("Title cannot be empty")
+        if not self.url:
+            raise ValueError("URL cannot be empty")
 
     def __str__(self) -> str:
-        return (
-            f"""\
+        return f"Title: {self.title}\nURL: {self.url}\n\n"
+
+
+@dataclass
+class News(Headline):
+    time: str = field(
+        default="",
+        metadata={
+            "examples": ["2021-10-01T00:00:00"],
+            "description": "The time the article was published"
+        }
+    )
+    content: str = field(
+        default="",
+        metadata={
+            "examples": ["Content of the article"],
+            "description": "The content of the article"
+        }
+    )
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.time = self.time.strip()
+        self.content = self.content.strip()
+        if not self.time:
+            raise ValueError("Time cannot be empty")
+        if not self.content:
+            raise ValueError("Content cannot be empty")
+
+    def __str__(self) -> str:
+        return f"""\
 Title: {self.title}
 Time: {self.time}
 URL: {self.url}
@@ -45,20 +74,33 @@ URL: {self.url}
 Content: {self.content}
 
 """
-        )
 
 
+@dataclass
 class NewsWithSummary(News):
-    summary: str = Field(
-        default=...,
-        examples=["Summary of the article"],
-        description="The summary of the article"
+    summary: str = field(
+        default="",
+        metadata={
+            "examples": ["Summary of the article"],
+            "description": "The summary of the article"
+        }
     )
-    reason: str = Field(
-        default=...,
-        examples=["Reason of the article"],
-        description="The reason of the article"
+    reason: str = field(
+        default="",
+        metadata={
+            "examples": ["Reason of the article"],
+            "description": "The reason of the article"
+        }
     )
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.summary = self.summary.strip()
+        self.reason = self.reason.strip()
+        if not self.summary:
+            raise ValueError("Summary cannot be empty")
+        if not self.reason:
+            raise ValueError("Reason cannot be empty")
 
     def __str__(self) -> str:
         return super().__str__() + \
@@ -260,7 +302,7 @@ class NewsCrawlerBase(metaclass=abc.ABCMeta):
         else:
             # append the news to the jsonl file
             with open(filepath, "a", encoding="utf-8") as file:
-                file.write(json.dumps(news.dict(), ensure_ascii=False))
+                file.write(json.dumps(news.__dict__, ensure_ascii=False))
                 file.write("\n")
 
         cls.logger.info(f"Saved news article to file: {filename}")

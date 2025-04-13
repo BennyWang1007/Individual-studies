@@ -1,10 +1,11 @@
 beautifulsoup4
+datasets
 numpy
 ollama
 OpenCC
-pydantic
 requests
 scikit-learn
+tensorboard
 tldextract
 torch
 tqdm
