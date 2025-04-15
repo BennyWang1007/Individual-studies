@@ -1,5 +1,8 @@
 [project]
 name = "My_individual_study"
+authors = [
+    {name = "Benny Wang", GitHub = "BennyWang1007"},
+]
 version = "1.0.0"
 dependencies = [
     "accelerate>=0.26.0",
@@ -16,3 +19,5 @@ dependencies = [
     "tqdm>=4.67.1",
     "transformers>=4.51.2",
 ]
+readme = "README.md"
+description = "My_individual_study is a project that focuses on LLM fine-tuning specifically on the Chinese news summarization task."

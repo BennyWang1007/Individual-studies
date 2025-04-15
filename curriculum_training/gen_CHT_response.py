@@ -11,10 +11,10 @@ from .constants import (
     MODEL_DISTAL_FROM,
 )
 from .curriculum_utils import (
-    load_curriculum_datasets,
-    DifficultyLevels
+    DifficultyLevels,
+    PREFIX_OF_DIFFICULTY_LEVELS
 )
-from utils import get_news_with_rationale_filename, get_zh_tw_filename
+from utils import get_zh_tw_filename, load_udn_news
 from crawler.utils import Logger
 
 gen_logger = Logger("data_gen", verbose_level=3)
@@ -30,34 +30,33 @@ def gen_zh_tw_response(
     # Initialize OpenCC for conversion
     cc = OpenCC('s2twp')
 
-    filename = get_news_with_rationale_filename(model_distal_from)
+    # filename = get_news_with_rationale_filename(model_distal_from)
     save_filename = get_zh_tw_filename(model_base)
 
-    datasets = load_curriculum_datasets(
-        filename, DifficultyLevels.DIRECT_SUMMARY
-    )
-    id_list = [i for i in range(len(datasets)) if i not in finished_ids]
-    datasets = [datasets[i] for i in id_list]
-    if len(datasets) == 0:
-        gen_logger.warning("No datasets loaded.")
+    news_list: list[str] = load_udn_news()
+
+    id_list = [i for i in range(len(news_list)) if i not in finished_ids]
+    news_list = [news_list[i] for i in id_list]
+
+    if len(news_list) == 0:
+        gen_logger.warning("No data need to generate.")
         return
 
-    assert len(datasets) == len(id_list)
+    assert len(news_list) == len(id_list)
+
+    sys_prompt = PREFIX_OF_DIFFICULTY_LEVELS[
+        DifficultyLevels.DIRECT_SUMMARY.value
+    ]
 
     model = AutoModelForCausalLM.from_pretrained(model_base)
     model = model.to(torch.device("cuda"))
     tokenizer = AutoTokenizer.from_pretrained(model_base)
 
-    # if start_index == 0:
-    #     # Clear the file if it exists
-    #     with open(save_filename, "w", encoding="utf-8") as f:
-    #         pass
-
-    for i, news_id in tqdm(enumerate(id_list), total=len(datasets)):
-        sys_prompt, user_prompt, _ = datasets[i]
+    for id, news in tqdm(zip(id_list, news_list), total=len(news_list)):
+        # print(f"Processing id: {id}")
         message = [
             {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": news}
         ]
         text = tokenizer.apply_chat_template(
             message,
@@ -79,8 +78,8 @@ def gen_zh_tw_response(
         with open(save_filename, "a", encoding="utf-8") as f:
             f.write(json.dumps(
                 {
-                    "id": news_id,
-                    "news": user_prompt,
+                    "id": id,
+                    "news": news,
                     "response_ZH_CN": response_zh_CN,
                     "response_ZH_TW": response_zh_TW
                 },

@@ -162,8 +162,6 @@ if __name__ == "__main__":
     gen_logger.info(f"Remains {len(news_list)} response to generate")
     # print_int_set(finished_news_ids)
 
-    # exit()
-
     # generate response using local model
     responses: list[dict] = []
     responses = local_gen_response(
@@ -173,8 +171,10 @@ if __name__ == "__main__":
 
     # parse the response
     parsed_data = parse_response(load_response(model_name=MODELNAME))
-
     gen_logger.info(f"Parsed {len(parsed_data)} responses")
+    with open(GENARATED_NWR_FILE, "w", encoding="utf-8") as f:
+        for dat in parsed_data:
+            f.write(json.dumps(dat.__dict__, ensure_ascii=False) + "\n")
 
     # generate zh-tw response MODEL_BASE and opencc
     gen_zh_tw_response(
@@ -182,4 +182,6 @@ if __name__ == "__main__":
         model_distal_from=MODEL_DISTAL_FROM,
         finished_ids=finished_zh_tw_ids
     )
-    gen_logger.info("Generated zh-tw responses")
+    gen_logger.info(
+        f"Generated {news_count - len(finished_zh_tw_ids)} zh-tw responses"
+    )
