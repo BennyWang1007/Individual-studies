@@ -53,3 +53,21 @@ class SummarizedNews:
             ls = [cls(**json.loads(line)) for line in f]
             cls.logger.info(f"Loaded {len(ls)} summarized news records")
             return ls
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "label": self.label,
+            "article": self.article,
+            "summary": self.summary
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            article=data.get("article", ""),
+            summary=data.get("summary", ""),
+            id=data.get("id", -1),
+            label=data.get("label", [-1]),
+            **data.get("kwargs", {})
+        )

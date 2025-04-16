@@ -15,3 +15,18 @@ class Rationale:
             f'Triples:\n{self.triples}\n'
             f'Summary:\n{self.rationale_summary}'
         )
+
+    def to_dict(self):
+        return {
+            'essential_aspects': self.essential_aspects,
+            'triples': self.triples,
+            'rationale_summary': self.rationale_summary
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            essential_aspects=data.get("essential_aspects", []),
+            triples=data.get("triples", []),
+            summary=data.get("rationale_summary", "")
+        )

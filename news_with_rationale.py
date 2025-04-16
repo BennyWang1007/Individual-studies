@@ -57,3 +57,20 @@ class NewsWithRationale(SummarizedNews, Rationale):
 
     def triples_str(self):
         return ', '.join(self.triples)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'label': self.label,
+            'article': self.article,
+            'summary': self.summary,
+            'essential_aspects': self.essential_aspects,
+            'triples': self.triples,
+            'rationale_summary': self.rationale_summary
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        summarized_news = SummarizedNews.from_dict(data)
+        rationale = Rationale.from_dict(data)
+        return cls(summarized_news, rationale)
