@@ -23,9 +23,10 @@ if USE_GPU:
 training_logger = Logger("training", verbose_level=3)
 training_logger.info("curriculum_training.py started.")
 
-TRAINING = True  # Set to False to skip training
+TRAINING = False  # Set to False to skip training
 
 # model_name = "Qwen/Qwen2.5-0.5B"
+# model_path = "Qwen/Qwen2.5-0.5B-Chat"
 model_path = MODEL_BASE
 model_name = model_path.split("/")[-1]
 training_logger.info(f"Fine-tuning model: {model_name}")
@@ -231,27 +232,20 @@ def curriculum_trianing_main() -> None:
 
         texts: list[dict] = []  # a list contains the input and output texts
         for i, (sys_prompt, user_prompt, out_str) in enumerate(dataset):
-            messages_in = [
+
+            messages = [
                 {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": user_prompt}
+                {"role": "user", "content": user_prompt},
+                {"role": "assistant", "content": out_str},
             ]
-            messages_out = [
-                {"role": "assistant", "content": out_str}
-            ]
-
-            # if check_to_filter(messages_in):
-            #     continue
-
-            text_in = tokenizer.apply_chat_template(
-                messages_in,
+            full_text = tokenizer.apply_chat_template(
+                messages,
                 tokenize=False,
                 add_generation_prompt=False
             )
-            text_out = tokenizer.apply_chat_template(
-                messages_out,
-                tokenize=False,
-                add_generation_prompt=False
-            )
+
+            text = full_text.split("<|im_start|>assistant\n")
+            text_in, text_out = text[0] + "<|im_start|>assistant\n", text[1]
 
             texts.append({
                 "input": text_in,
@@ -259,10 +253,6 @@ def curriculum_trianing_main() -> None:
             })
 
         curriculum_texts.append(texts)
-
-    # print(f"{len(curriculum_datasets)=}")
-    # print(f"{len(curriculum_datasets[0])=}")
-    # print(f"{curriculum_datasets[0][0]}")
 
     curriculum_datasets: list[Dataset] = [
         Dataset.from_dict({

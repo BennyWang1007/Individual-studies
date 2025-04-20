@@ -8,13 +8,14 @@ from tqdm import tqdm
 from crawler.utils import Logger
 from curriculum_training.constants import (
     MODEL_DISTAL_FROM,
+    FORMATTED_NWR_FILE,
 )
 from news_with_rationale import NewsWithRationale
 from utils import get_news_with_rationale_filename
 
 
 FORMAT_MODEL = "qwen2.5:14b-instruct"
-FORMAT_FILENAME = "formatted_nwrs.jsonl"
+FORMAT_FILENAME = FORMATTED_NWR_FILE
 
 NWR_FILE = get_news_with_rationale_filename(MODEL_DISTAL_FROM)
 

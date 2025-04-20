@@ -52,11 +52,28 @@ class NewsWithRationale(SummarizedNews, Rationale):
     def load_all(cls):
         return list(cls.load())
 
+    def article_full_str(self):
+        """ Returns a string representation of the article with field name. """
+        return f'article:\n{self.article}'
+
     def essential_aspects_str(self):
-        return ', '.join(self.essential_aspects)
+        """ Returns a string representation of the essential aspects. """
+        return '[' + '], ['.join(self.essential_aspects) + ']'
+
+    def essential_aspects_full_str(self):
+        """
+        Returns a string representation of the essential aspects with \
+        field name.
+        """
+        return f'essential aspects:\n{self.essential_aspects_str()}'
 
     def triples_str(self):
+        """ Returns a string representation of the triples. """
         return ', '.join(self.triples)
+
+    def triples_full_str(self):
+        """ Returns a string representation of the triples with field name. """
+        return f'triples:\n{self.triples_str()}'
 
     def to_dict(self):
         return {

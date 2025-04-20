@@ -1,16 +1,13 @@
 import json
-from tqdm import tqdm
 
 import ollama
 from ollama import ChatResponse, chat
+from tqdm import tqdm
 
+from crawler.utils import Logger
 from curriculum_training.gen_CHT_response import gen_zh_tw_response
-from curriculum_training.constants import (
-    MODEL_BASE,
-    MODEL_DISTAL_FROM,
-)
+from curriculum_training.constants import MODEL_BASE, MODEL_DISTAL_FROM
 from parse_generated_data import parse_response, load_response
-
 from utils import (
     get_rationale_prompt_no_gt_chinese_system,
     get_rationale_prompt_no_gt_chinese_user,
@@ -19,8 +16,6 @@ from utils import (
     get_response_filename,
     load_udn_news
 )
-
-from crawler.utils import Logger
 
 # MODELNAME = "deepseek-r1:14b"  # 60~80 sec
 # MODELNAME = "deepseek-r1:7b"  # 9.3 sec
@@ -33,6 +28,11 @@ MODELNAME = "qwen2.5:32b-instruct-q6_K"  # 94.55 sec
 # MODELNAME = "qwen2.5:32b-instruct-q8_0" # mem-full, 42.73 sec
 
 gen_logger = Logger("data_gen", verbose_level=3)
+
+
+RESPONSE_FILE = get_response_filename(MODELNAME)
+NWR_FILE = get_news_with_rationale_filename(MODELNAME)
+ZH_TW_FILE = get_zh_tw_filename(MODEL_BASE)
 
 
 def local_gen_response(
@@ -102,18 +102,13 @@ def print_int_set(int_set) -> None:
     gen_logger.info(", ".join(out_strs))
 
 
-GENARATED_RESPONSE_FILE = get_response_filename(MODELNAME)
-GENARATED_NWR_FILE = get_news_with_rationale_filename(MODELNAME)
-GENERATE_ZH_TW_FILE = get_zh_tw_filename(MODEL_BASE)
-
-
-if __name__ == "__main__":
-    # make sure the model is downloaded
-    ollama.pull(MODELNAME)
-
-    # find finishde ids
+def get_finished_id() -> tuple[set[int], set[int], set[int]]:
+    """
+    Get the finished news/NWR/zh-tw ids from the generated files.
+    """
+    # find finishded ids
     finished_news_ids: set[int] = set()
-    with open(GENARATED_RESPONSE_FILE, "r", encoding="utf-8") as f:
+    with open(RESPONSE_FILE, "r", encoding="utf-8") as f:
         for line in f:
             news = json.loads(line)
             if news["id"] in finished_news_ids:
@@ -124,7 +119,7 @@ if __name__ == "__main__":
 
     # find finished NWR ids
     finished_NWR_ids: set[int] = set()
-    with open(GENARATED_NWR_FILE, "r", encoding="utf-8") as f:
+    with open(NWR_FILE, "r", encoding="utf-8") as f:
         for line in f:
             news = json.loads(line)
             if news["id"] in finished_NWR_ids:
@@ -134,7 +129,7 @@ if __name__ == "__main__":
     gen_logger.info(f"Finished NWR ids count: {len(finished_NWR_ids)}")
 
     finished_zh_tw_ids: set[int] = set()
-    with open(GENERATE_ZH_TW_FILE, "r", encoding="utf-8") as f:
+    with open(ZH_TW_FILE, "r", encoding="utf-8") as f:
         for line in f:
             news = json.loads(line)
             if news["id"] in finished_zh_tw_ids:
@@ -145,6 +140,16 @@ if __name__ == "__main__":
 
     finished_news_ids = finished_news_ids.union(finished_NWR_ids)
 
+    return finished_news_ids, finished_NWR_ids, finished_zh_tw_ids
+
+
+if __name__ == "__main__":
+    # make sure the model is downloaded
+    ollama.pull(MODELNAME)
+
+    # get the finished ids
+    finished_news_ids, finished_NWR_ids, finished_zh_tw_ids = get_finished_id()
+
     # load the news
     news_list: list[str] = load_udn_news()
     news_count: int = len(news_list)
@@ -152,27 +157,22 @@ if __name__ == "__main__":
 
     # remove the finished news
     news_list = [
-        news_list[i] for i in range(news_count)
-        if i not in finished_news_ids
+        news_list[i] for i in range(news_count) if i not in finished_news_ids
     ]
-    id_list: list[int] = [
-        i for i in range(news_count)
-        if i not in finished_news_ids
+    ids: list[int] = [
+        i for i in range(news_count) if i not in finished_news_ids
     ]
     gen_logger.info(f"Remains {len(news_list)} response to generate")
     # print_int_set(finished_news_ids)
 
     # generate response using local model
-    responses: list[dict] = []
-    responses = local_gen_response(
-        news_list, MODELNAME, GENARATED_RESPONSE_FILE, id_list
-    )
+    responses = local_gen_response(news_list, MODELNAME, RESPONSE_FILE, ids)
     gen_logger.info(f"Generated {len(responses)} responses")
 
     # parse the response
     parsed_data = parse_response(load_response(model_name=MODELNAME))
     gen_logger.info(f"Parsed {len(parsed_data)} responses")
-    with open(GENARATED_NWR_FILE, "w", encoding="utf-8") as f:
+    with open(NWR_FILE, "w", encoding="utf-8") as f:
         for dat in parsed_data:
             f.write(json.dumps(dat.__dict__, ensure_ascii=False) + "\n")
 

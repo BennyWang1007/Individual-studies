@@ -11,15 +11,21 @@ if __name__ == "__main__":
 
     crawled_urls_only: list[str] = []
     crawled_urls: list[tuple[str, str]] = []
+    news_list: set[str] = set()
 
     # Read the crawled urls from the udn_news.jsonl file
     with open("udn_news.jsonl", "r", encoding="utf-8") as f:
+        id = 0
         for line in f:
             data = json.loads(line)
+            if data["content"] in news_list:
+                print(f"Duplicated news id: {id}")
+            news_list.add(data["content"])
             crawled_urls_only.append(data["url"])
             crawled_urls.append(
                 (data["url"], "crawler/saved_news/udn_news.jsonl")
             )
+            id += 1
 
     # Write the crawled urls to the crawled_urls_only.jsonl file
     with open("crawled_urls_only.json", "w", encoding="utf-8") as f:

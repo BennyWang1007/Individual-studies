@@ -9,15 +9,18 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from .constants import (
     MODEL_BASE,
     MODEL_DISTAL_FROM,
+    MAX_INPUT_LENGTH,
+    MAX_NEW_TOKENS,
 )
 from .curriculum_utils import (
-    DifficultyLevels,
-    PREFIX_OF_DIFFICULTY_LEVELS
+    DifficultyLevels as DL,
+    PREFIX_OF_DIFFICULTY_LEVELS,
 )
 from utils import get_zh_tw_filename, load_udn_news
 from crawler.utils import Logger
 
 gen_logger = Logger("data_gen", verbose_level=3)
+gen_logger.info(f"CUDA allow_tf32: {torch.backends.cuda.matmul.allow_tf32}")
 
 
 def gen_zh_tw_response(
@@ -44,47 +47,69 @@ def gen_zh_tw_response(
 
     assert len(news_list) == len(id_list)
 
-    sys_prompt = PREFIX_OF_DIFFICULTY_LEVELS[
-        DifficultyLevels.DIRECT_SUMMARY.value
-    ]
+    sys_prompt = PREFIX_OF_DIFFICULTY_LEVELS[DL.DIRECT_SUMMARY]
 
     model = AutoModelForCausalLM.from_pretrained(model_base)
     model = model.to(torch.device("cuda"))
     tokenizer = AutoTokenizer.from_pretrained(model_base)
+    tokenizer.padding_side = "left"
 
-    for id, news in tqdm(zip(id_list, news_list), total=len(news_list)):
-        # print(f"Processing id: {id}")
-        message = [
-            {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": news}
+    batch_size = 8  # Define the batch size
+    for i in tqdm(
+        range(0, len(news_list), batch_size),
+        total=(len(news_list) + batch_size - 1) // batch_size
+    ):
+        batch_news = news_list[i:i + batch_size]
+        batch_ids = id_list[i:i + batch_size]
+
+        messages = [
+            [
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": "article:\n" + news}
+            ]
+            for news in batch_news
         ]
-        text = tokenizer.apply_chat_template(
-            message,
-            tokenize=False,
-            add_generation_prompt=True
-        )
+        texts = [
+            tokenizer.apply_chat_template(
+                message,
+                tokenize=False,
+                add_generation_prompt=True
+            )
+            for message in messages
+        ]
 
-        model_inputs = tokenizer(text, return_tensors="pt").to(model.device)
-        generated_ids = model.generate(
-            **model_inputs,
-            max_new_tokens=1024,
-            # temperature=
-        )
+        model_inputs = tokenizer(
+            texts,
+            padding="max_length",
+            truncation=True,
+            max_length=MAX_INPUT_LENGTH,
+            return_tensors="pt",
+        ).to(model.device)
 
-        response = generated_ids[0][len(model_inputs["input_ids"][0]):]
-        response_zh_CN = tokenizer.decode(response, skip_special_tokens=True)
-        response_zh_TW = cc.convert(response_zh_CN)
+        with torch.no_grad():
+            generated_ids = model.generate(
+                **model_inputs,
+                max_new_tokens=MAX_NEW_TOKENS,
+                use_cache=True,
+            )
 
-        with open(save_filename, "a", encoding="utf-8") as f:
-            f.write(json.dumps(
-                {
-                    "id": id,
-                    "news": news,
-                    "response_ZH_CN": response_zh_CN,
-                    "response_ZH_TW": response_zh_TW
-                },
-                ensure_ascii=False
-            ) + "\n")
+        for idx, (id, news, generated_id) in enumerate(
+            zip(batch_ids, batch_news, generated_ids)
+        ):
+            response = generated_id[len(model_inputs["input_ids"][idx]):]
+            str_zh_cn = tokenizer.decode(response, skip_special_tokens=True)
+            str_zh_tw = cc.convert(str_zh_cn)
+
+            with open(save_filename, "a", encoding="utf-8") as f:
+                f.write(json.dumps(
+                    {
+                        "id": id,
+                        "news": news,
+                        "response_zh-cn": str_zh_cn,
+                        "response_zh-tw": str_zh_tw
+                    },
+                    ensure_ascii=False
+                ) + "\n")
 
 
 if __name__ == "__main__":
