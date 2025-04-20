@@ -49,8 +49,12 @@ def gen_zh_tw_response(
 
     sys_prompt = PREFIX_OF_DIFFICULTY_LEVELS[DL.DIRECT_SUMMARY]
 
-    model = AutoModelForCausalLM.from_pretrained(model_base)
-    model = model.to(torch.device("cuda"))
+    model = AutoModelForCausalLM.from_pretrained(
+        model_base,
+        torch_dtype=torch.bfloat16,
+        device_map="auto",
+        attn_implementation="flash_attention_2"
+    ).eval().to("cuda")
     tokenizer = AutoTokenizer.from_pretrained(model_base)
     tokenizer.padding_side = "left"
 
