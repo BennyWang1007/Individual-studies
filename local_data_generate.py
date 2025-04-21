@@ -3,12 +3,14 @@ import json
 import ollama
 from ollama import ChatResponse, chat
 from tqdm import tqdm
+from transformers import AutoTokenizer
+from vllm import LLM, SamplingParams
 
 from crawler.utils import Logger
 from curriculum_training.gen_zh_tw_response import gen_zh_tw_response
 from curriculum_training.gen_zh_tw_response_vllm import gen_zh_tw_response_vllm
 from curriculum_training.constants import (
-    MODEL_BASE, MODEL_DISTAL_FROM, USE_VLLM
+    MODEL_BASE, MODEL_DISTAL_FROM, USE_VLLM, MAX_INPUT_LENGTH, MAX_NEW_TOKENS
 )
 from parse_generated_data import parse_response, load_response
 from utils import (
@@ -30,6 +32,8 @@ from utils import (
 # MODELNAME = "qwen2.5:72b"     # TLE
 MODELNAME = "qwen2.5:32b-instruct-q6_K"  # 94.55 sec
 # MODELNAME = "qwen2.5:32b-instruct-q8_0" # mem-full, 42.73 sec
+MODELNAME_VLLM = "Qwen/Qwen2.5-32B-Instruct"
+# MODELNAME_VLLM = "Qwen/Qwen2.5-0.5B-Instruct"
 
 gen_logger = Logger("data_gen", verbose_level=3)
 
@@ -46,36 +50,93 @@ def local_gen_response(
     assert len(news_list) == len(id_list)
     data: list[dict] = []
 
-    # make sure the model is downloaded
-    ollama.pull(modelname)
+    if len(news_list) == 0:
+        gen_logger.warning("No data need to generate.")
+        return data
 
-    for i, news in tqdm(
-        enumerate(news_list),
-        total=len(news_list), desc="Generating response using Ollama",
-    ):
-        sys_prompt = get_rationale_prompt_no_gt_chinese_system(news)
-        user_prompt = get_rationale_prompt_no_gt_chinese_user(news)
-
-        gen_response: ChatResponse = chat(
-            model=modelname,
-            messages=[
-                {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
+    if USE_VLLM:
+        model = LLM(
+            model=MODELNAME_VLLM,
+            dtype="bfloat16",
+            max_model_len=MAX_INPUT_LENGTH + MAX_NEW_TOKENS,
+            max_seq_len_to_capture=MAX_INPUT_LENGTH,
+            task="generate",
         )
-        # dat = {"news": news, "response": gen_response.message.content}
-        dat = {
-            "id": id_list[i],
-            "news": news,
-            "response": gen_response.message.content
-        }
-        data.append(dat)
+        tokenizer = AutoTokenizer.from_pretrained(MODELNAME_VLLM)
 
-        # print(f"News {i+FINISHED_COUNT} done:")
-        # print(f"News: {news}")
-        # print(f"Response: {gen_response.message.content}\n")
+        sampling_params = SamplingParams(
+            temperature=0.7,
+            top_p=0.95,
+            # top_k=40,
+            max_tokens=MAX_NEW_TOKENS,
+            # stop=["\n\n"]
+        )
 
-        with open(filename, "a", encoding="utf-8") as f:
+        prompts = [
+            tokenizer.apply_chat_template(
+                [
+                    {
+                        "role": "system",
+                        "content": get_rationale_prompt_no_gt_chinese_system(
+                            news
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": get_rationale_prompt_no_gt_chinese_user(
+                            news
+                        )
+                    }
+                ],
+                tokenize=False,
+                add_generation_prompt=True
+            )
+            for news in news_list
+        ]
+
+        responses = model.generate(prompts, sampling_params)
+        outputs = [responses[i].outputs[0].text for i in range(len(responses))]
+        data = [
+            {
+                "id": id_list[i],
+                "news": news,
+                "response": response
+            }
+            for i, (news, response) in enumerate(zip(news_list, outputs))
+        ]
+
+    else:
+        # make sure the model is downloaded
+        ollama.pull(modelname)
+
+        for i, news in tqdm(
+            enumerate(news_list),
+            total=len(news_list), desc="Generating response using Ollama",
+        ):
+            sys_prompt = get_rationale_prompt_no_gt_chinese_system(news)
+            user_prompt = get_rationale_prompt_no_gt_chinese_user(news)
+
+            gen_response: ChatResponse = chat(
+                model=modelname,
+                messages=[
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": user_prompt}
+                ]
+            )
+            # dat = {"news": news, "response": gen_response.message.content}
+            dat = {
+                "id": id_list[i],
+                "news": news,
+                "response": gen_response.message.content
+            }
+            data.append(dat)
+
+            # print(f"News {i+FINISHED_COUNT} done:")
+            # print(f"News: {news}")
+            # print(f"Response: {gen_response.message.content}\n")
+
+    with open(filename, "a", encoding="utf-8") as f:
+        for dat in data:
             f.write(json.dumps(dat, ensure_ascii=False) + "\n")
 
     return data
