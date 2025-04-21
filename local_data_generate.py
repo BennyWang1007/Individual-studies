@@ -5,7 +5,7 @@ from ollama import ChatResponse, chat
 from tqdm import tqdm
 
 from crawler.utils import Logger
-from curriculum_training.gen_CHT_response import gen_zh_tw_response
+from curriculum_training.gen_zh_tw_response import gen_zh_tw_response
 from curriculum_training.constants import MODEL_BASE, MODEL_DISTAL_FROM
 from parse_generated_data import parse_response, load_response
 from utils import (
@@ -28,6 +28,12 @@ MODELNAME = "qwen2.5:32b-instruct-q6_K"  # 94.55 sec
 # MODELNAME = "qwen2.5:32b-instruct-q8_0" # mem-full, 42.73 sec
 
 gen_logger = Logger("data_gen", verbose_level=3)
+
+USE_VLLM = False
+
+if USE_VLLM:
+    from curriculum_training.gen_zh_tw_response_vllm import \
+        gen_zh_tw_response_vllm
 
 
 RESPONSE_FILE = get_response_filename(MODELNAME)
@@ -177,11 +183,18 @@ if __name__ == "__main__":
             f.write(json.dumps(dat.__dict__, ensure_ascii=False) + "\n")
 
     # generate zh-tw response MODEL_BASE and opencc
-    gen_zh_tw_response(
-        model_base=MODEL_BASE,
-        model_distal_from=MODEL_DISTAL_FROM,
-        finished_ids=finished_zh_tw_ids
-    )
+    if USE_VLLM:
+        gen_zh_tw_response_vllm(
+            model_base=MODEL_BASE,
+            model_distal_from=MODEL_DISTAL_FROM,
+            finished_ids=finished_zh_tw_ids
+        )
+    else:
+        gen_zh_tw_response(
+            model_base=MODEL_BASE,
+            model_distal_from=MODEL_DISTAL_FROM,
+            finished_ids=finished_zh_tw_ids
+        )
     gen_logger.info(
         f"Generated {news_count - len(finished_zh_tw_ids)} zh-tw responses"
     )
