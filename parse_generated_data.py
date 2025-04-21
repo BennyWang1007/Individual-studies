@@ -43,7 +43,10 @@ def parse_response(responses: list[dict]) -> list[NewsWithRationale]:
 
     news: list[str] = load_udn_news()
 
-    for i, d in tqdm(enumerate(responses), total=len(responses)):
+    for i, d in tqdm(
+        enumerate(responses),
+        total=len(responses), desc="Parsing responses",
+    ):
         if i in corrupted_response_ids:
             continue
 

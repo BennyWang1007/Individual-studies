@@ -54,7 +54,7 @@ def test_gen_time(test_count: int, modelname: str) -> float:
     print(f"Warn up time: {dt} sec")
 
     start_time = time.time()
-    for _ in tqdm(range(test_count)):
+    for _ in tqdm(range(test_count), desc="Testing", total=test_count):
         _ = get_gen_time(sys_prompt, user_prompt, modelname)
     end_time = time.time()
     print(f"Response time: {end_time - start_time} sec")

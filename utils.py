@@ -172,6 +172,36 @@ def legalize_filename(filename: str) -> str:
     return re.sub(r'[\/\\:*?"<>|]', '_', filename)
 
 
+def int_set_str(int_set: set[int]) -> str:
+    """
+    Print the set of integers in a readable format.
+    For example, if the set is {1, 2, 3, 5, 6, 7}, it will print "1-3, 5-7".
+    """
+    prev_id: int = -2
+    continuous_count: int = 0
+    id_list: list[int] = sorted(list(int_set))
+    out_strs: list[str] = []
+    for i in range(len(id_list)):
+        if id_list[i] == prev_id + 1:
+            prev_id += 1
+            continuous_count += 1
+            continue
+        else:
+            if continuous_count > 0:
+                out_strs.append(f"{prev_id - continuous_count}-{prev_id}")
+                continuous_count = 0
+                prev_id = id_list[i]
+            else:
+                if prev_id != -2:
+                    out_strs.append(f"{prev_id}")
+                prev_id = id_list[i]
+
+    if continuous_count > 0:
+        out_strs.append(f"{prev_id - continuous_count}-{prev_id}")
+
+    return ", ".join(out_strs)
+
+
 def load_udn_news() -> list[str]:
     """ Load UDN news from the saved file """
     news: list[str] = []

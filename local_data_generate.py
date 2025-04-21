@@ -6,7 +6,10 @@ from tqdm import tqdm
 
 from crawler.utils import Logger
 from curriculum_training.gen_zh_tw_response import gen_zh_tw_response
-from curriculum_training.constants import MODEL_BASE, MODEL_DISTAL_FROM
+from curriculum_training.gen_zh_tw_response_vllm import gen_zh_tw_response_vllm
+from curriculum_training.constants import (
+    MODEL_BASE, MODEL_DISTAL_FROM, USE_VLLM
+)
 from parse_generated_data import parse_response, load_response
 from utils import (
     get_rationale_prompt_no_gt_chinese_system,
@@ -14,7 +17,8 @@ from utils import (
     get_news_with_rationale_filename,
     get_zh_tw_filename,
     get_response_filename,
-    load_udn_news
+    load_udn_news,
+    # int_set_str,
 )
 
 # MODELNAME = "deepseek-r1:14b"  # 60~80 sec
@@ -28,13 +32,6 @@ MODELNAME = "qwen2.5:32b-instruct-q6_K"  # 94.55 sec
 # MODELNAME = "qwen2.5:32b-instruct-q8_0" # mem-full, 42.73 sec
 
 gen_logger = Logger("data_gen", verbose_level=3)
-
-USE_VLLM = True
-
-if USE_VLLM:
-    from curriculum_training.gen_zh_tw_response_vllm import \
-        gen_zh_tw_response_vllm
-
 
 RESPONSE_FILE = get_response_filename(MODELNAME)
 NWR_FILE = get_news_with_rationale_filename(MODELNAME)
@@ -52,7 +49,10 @@ def local_gen_response(
     # make sure the model is downloaded
     ollama.pull(modelname)
 
-    for i, news in tqdm(enumerate(news_list), total=len(news_list)):
+    for i, news in tqdm(
+        enumerate(news_list),
+        total=len(news_list), desc="Generating response using Ollama",
+    ):
         sys_prompt = get_rationale_prompt_no_gt_chinese_system(news)
         user_prompt = get_rationale_prompt_no_gt_chinese_user(news)
 
@@ -79,36 +79,6 @@ def local_gen_response(
             f.write(json.dumps(dat, ensure_ascii=False) + "\n")
 
     return data
-
-
-def print_int_set(int_set) -> None:
-    """
-    Print the set of integers in a readable format.
-    For example, if the set is {1, 2, 3, 5, 6, 7}, it will print "1-3, 5-7".
-    """
-    prev_id: int = -2
-    continuous_count: int = 0
-    id_list: list[int] = sorted(list(int_set))
-    out_strs: list[str] = []
-    for i in range(len(id_list)):
-        if id_list[i] == prev_id + 1:
-            prev_id += 1
-            continuous_count += 1
-            continue
-        else:
-            if continuous_count > 0:
-                out_strs.append(f"{prev_id - continuous_count}-{prev_id}")
-                continuous_count = 0
-                prev_id = id_list[i]
-            else:
-                if prev_id != -2:
-                    out_strs.append(f"{prev_id}")
-                prev_id = id_list[i]
-
-    if continuous_count > 0:
-        out_strs.append(f"{prev_id - continuous_count}-{prev_id}")
-
-    gen_logger.info(", ".join(out_strs))
 
 
 def get_finished_id() -> tuple[set[int], set[int], set[int]]:

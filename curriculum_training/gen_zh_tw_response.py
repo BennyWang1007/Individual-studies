@@ -61,7 +61,8 @@ def gen_zh_tw_response(
     batch_size = 8  # Define the batch size
     for i in tqdm(
         range(0, len(news_list), batch_size),
-        total=(len(news_list) + batch_size - 1) // batch_size
+        total=(len(news_list) + batch_size - 1) // batch_size,
+        desc="Generating response using PyTorch",
     ):
         batch_news = news_list[i:i + batch_size]
         batch_ids = id_list[i:i + batch_size]

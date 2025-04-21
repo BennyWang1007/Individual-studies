@@ -9,6 +9,7 @@ from vllm import LLM, SamplingParams
 from .constants import (
     MODEL_BASE,
     MODEL_DISTAL_FROM,
+    MAX_INPUT_LENGTH,
     MAX_NEW_TOKENS,
 )
 from .curriculum_utils import (
@@ -45,7 +46,13 @@ def gen_zh_tw_response_vllm(
     sys_prompt = PREFIX_OF_DIFFICULTY_LEVELS[DL.DIRECT_SUMMARY]
 
     # Initialize vLLM and tokenizer
-    llm = LLM(model=model_base, dtype="bfloat16")
+    llm = LLM(
+        model=model_base,
+        dtype="bfloat16",
+        max_model_len=MAX_INPUT_LENGTH + MAX_NEW_TOKENS,
+        max_seq_len_to_capture=MAX_INPUT_LENGTH,
+        task="generate",
+    )
     tokenizer = AutoTokenizer.from_pretrained(model_base)
 
     prompts = [
@@ -60,11 +67,16 @@ def gen_zh_tw_response_vllm(
         for news in news_list
     ]
 
-    sampling_params = SamplingParams(max_tokens=MAX_NEW_TOKENS)
+    sampling_params = SamplingParams(
+        temperature=0.7,
+        top_p=0.95,
+        max_tokens=MAX_NEW_TOKENS,
+    )
     outputs = llm.generate(prompts, sampling_params)
 
     for id, news, output in tqdm(
-        zip(id_list, news_list, outputs), total=len(outputs)
+        zip(id_list, news_list, outputs),
+        total=len(outputs), desc="Generating ZH-TW responses using vLLM",
     ):
         str_zh_cn = output.outputs[0].text
         str_zh_tw = cc.convert(str_zh_cn)

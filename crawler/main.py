@@ -29,8 +29,7 @@ def get_news_with_category(
     logger.info(f"Start to get {num} news from {catagory.name}")
 
     with tqdm(
-        total=num,
-        desc=f"Get {num} news from {catagory.name}"
+        total=num, desc=f"Get {num} news from {catagory.name}"
     ) as pbar:
         while num > 0:
             headlines, next_page = UDNCrawler.get_headlines_catagory(

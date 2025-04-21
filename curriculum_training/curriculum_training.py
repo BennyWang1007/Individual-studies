@@ -11,7 +11,7 @@ from transformers import (
     TrainingArguments,
 )
 
-from .constants import GENARATED_NWR_FILE, MODEL_BASE, MAX_INPUT_LENGTH
+from .constants import FORMATTED_NWR_FILE, MODEL_BASE, MAX_INPUT_LENGTH
 from .curriculum_utils import DifficultyLevels, load_curriculum_datasets
 from crawler.utils import Logger, TERM_COLORS
 
@@ -26,14 +26,14 @@ training_logger.info("curriculum_training.py started.")
 TRAINING = True  # Set to False to skip training
 
 # model_name = "Qwen/Qwen2.5-0.5B"
-# model_path = "Qwen/Qwen2.5-0.5B-Chat"
 model_path = MODEL_BASE
 model_name = model_path.split("/")[-1]
 training_logger.info(f"Fine-tuning model: {model_name}")
 
 tokenizer = AutoTokenizer.from_pretrained(model_path)
+tokenizer.padding_side = "left"
 
-DATASET_NAME = GENARATED_NWR_FILE
+DATASET_NAME = FORMATTED_NWR_FILE
 # count the number of news in the dataset
 with open(DATASET_NAME, "r", encoding="utf-8") as f:
     news_count = sum(1 for _ in f)
@@ -172,7 +172,12 @@ def curriculum_training(
     start_time = time.time()
     ls = len(states)  # length of the states
     if TRAINING:
-        model = AutoModelForCausalLM.from_pretrained(model_path).to(device)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+            attn_implementation="flash_attention_2",
+        ).to(device)
 
     # train progressively on harder datasets
     for difficulty_level in states:
@@ -227,7 +232,7 @@ def curriculum_trianing_main() -> None:
         random.seed(42)
         random.shuffle(dataset)
         # for demo purpose
-        # dataset = dataset[:40]
+        # dataset = dataset[:80]
 
         texts: list[dict] = []  # a list contains the input and output texts
         for i, (sys_prompt, user_prompt, out_str) in enumerate(dataset):
