@@ -29,7 +29,7 @@ MODELNAME = "qwen2.5:32b-instruct-q6_K"  # 94.55 sec
 
 gen_logger = Logger("data_gen", verbose_level=3)
 
-USE_VLLM = False
+USE_VLLM = True
 
 if USE_VLLM:
     from curriculum_training.gen_zh_tw_response_vllm import \
@@ -48,6 +48,9 @@ def local_gen_response(
 
     assert len(news_list) == len(id_list)
     data: list[dict] = []
+
+    # make sure the model is downloaded
+    ollama.pull(modelname)
 
     for i, news in tqdm(enumerate(news_list), total=len(news_list)):
         sys_prompt = get_rationale_prompt_no_gt_chinese_system(news)
@@ -150,8 +153,6 @@ def get_finished_id() -> tuple[set[int], set[int], set[int]]:
 
 
 if __name__ == "__main__":
-    # make sure the model is downloaded
-    ollama.pull(MODELNAME)
 
     # get the finished ids
     finished_news_ids, finished_NWR_ids, finished_zh_tw_ids = get_finished_id()
@@ -183,18 +184,12 @@ if __name__ == "__main__":
             f.write(json.dumps(dat.__dict__, ensure_ascii=False) + "\n")
 
     # generate zh-tw response MODEL_BASE and opencc
-    if USE_VLLM:
-        gen_zh_tw_response_vllm(
-            model_base=MODEL_BASE,
-            model_distal_from=MODEL_DISTAL_FROM,
-            finished_ids=finished_zh_tw_ids
-        )
-    else:
-        gen_zh_tw_response(
-            model_base=MODEL_BASE,
-            model_distal_from=MODEL_DISTAL_FROM,
-            finished_ids=finished_zh_tw_ids
-        )
+    fn = gen_zh_tw_response_vllm if USE_VLLM else gen_zh_tw_response
+    fn(
+        model_base=MODEL_BASE,
+        model_distal_from=MODEL_DISTAL_FROM,
+        finished_ids=finished_zh_tw_ids
+    )
     gen_logger.info(
         f"Generated {news_count - len(finished_zh_tw_ids)} zh-tw responses"
     )

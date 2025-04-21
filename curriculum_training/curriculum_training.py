@@ -11,7 +11,7 @@ from transformers import (
     TrainingArguments,
 )
 
-from .constants import GENARATED_NWR_FILE, MODEL_BASE
+from .constants import GENARATED_NWR_FILE, MODEL_BASE, MAX_INPUT_LENGTH
 from .curriculum_utils import DifficultyLevels, load_curriculum_datasets
 from crawler.utils import Logger, TERM_COLORS
 
@@ -23,7 +23,7 @@ if USE_GPU:
 training_logger = Logger("training", verbose_level=3)
 training_logger.info("curriculum_training.py started.")
 
-TRAINING = False  # Set to False to skip training
+TRAINING = True  # Set to False to skip training
 
 # model_name = "Qwen/Qwen2.5-0.5B"
 # model_path = "Qwen/Qwen2.5-0.5B-Chat"
@@ -39,8 +39,7 @@ with open(DATASET_NAME, "r", encoding="utf-8") as f:
     news_count = sum(1 for _ in f)
 training_logger.info(f"Total news count: {news_count}")
 
-MAX_LENGTH = 1024
-BATCH_SIZE = 8
+BATCH_SIZE = 16
 EPOCH = 3
 
 if USE_GPU:
@@ -90,14 +89,14 @@ def tokenize_function(sample: Dataset):
         sample["input"],
         padding="max_length",
         truncation=True,
-        max_length=MAX_LENGTH,
+        max_length=MAX_INPUT_LENGTH,
         return_tensors="pt",
     )
     labels = tokenizer(
         sample["output"],
         padding="max_length",
         truncation=True,
-        max_length=MAX_LENGTH,
+        max_length=MAX_INPUT_LENGTH,
         return_tensors="pt",
     )
     tokenized_inputs["labels"] = labels["input_ids"]
@@ -111,7 +110,7 @@ def check_to_filter(messages: dict) -> bool:
         tokenize=True,
         add_generation_prompt=False
     )
-    return len(tokenized_inputs) > MAX_LENGTH
+    return len(tokenized_inputs) > MAX_INPUT_LENGTH
 
 
 def check_batch_shape(dataset):
@@ -119,14 +118,14 @@ def check_batch_shape(dataset):
         [dataset[i]["input"] for i in range(BATCH_SIZE)],
         padding="max_length",
         truncation=True,
-        max_length=MAX_LENGTH,
+        max_length=MAX_INPUT_LENGTH,
         return_tensors="pt"
     )
     batch["labels"] = tokenizer(
         [dataset[i]["output"] for i in range(BATCH_SIZE)],
         padding="max_length",
         truncation=True,
-        max_length=MAX_LENGTH,
+        max_length=MAX_INPUT_LENGTH,
         return_tensors="pt"
     )["input_ids"]
 
@@ -134,9 +133,9 @@ def check_batch_shape(dataset):
         training_logger.debug(f"{key}: {batch[key].shape}")
 
     # Check the shape of the batch
-    assert batch["input_ids"].shape == (BATCH_SIZE, MAX_LENGTH)
-    assert batch["labels"].shape == (BATCH_SIZE, MAX_LENGTH)
-    assert batch["attention_mask"].shape == (BATCH_SIZE, MAX_LENGTH)
+    assert batch["input_ids"].shape == (BATCH_SIZE, MAX_INPUT_LENGTH)
+    assert batch["labels"].shape == (BATCH_SIZE, MAX_INPUT_LENGTH)
+    assert batch["attention_mask"].shape == (BATCH_SIZE, MAX_INPUT_LENGTH)
     training_logger.log(
         "Batch shape check passed!", "SUCCESS", TERM_COLORS.GREEN
     )
