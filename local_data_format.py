@@ -178,6 +178,18 @@ def local_data_format_main() -> None:
             )
             for nwr in nwr_list
         ]
+
+        # Filter out prompts that are too long
+        filtered_prompts = []
+        filtered_nwrs = []
+        for i, prompt in enumerate(prompts):
+            if len(prompt) > MAX_INPUT_LENGTH:
+                continue
+            filtered_prompts.append(prompt)
+            filtered_nwrs.append(nwr_list[i])
+        nwr_list = filtered_nwrs
+        prompts = filtered_prompts
+
         sampling_params = SamplingParams(
             temperature=0.7,
             top_p=0.95,

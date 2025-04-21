@@ -94,6 +94,20 @@ def local_gen_response(
             for news in news_list
         ]
 
+        # Filter out prompts that are too long
+        filtered_prompts = []
+        filtered_ids = []
+        filtered_news = []
+        for i, prompt in enumerate(prompts):
+            if len(prompt) > MAX_INPUT_LENGTH:
+                continue
+            filtered_prompts.append(prompt)
+            filtered_ids.append(id_list[i])
+            filtered_news.append(news_list[i])
+        id_list = filtered_ids
+        news_list = filtered_news
+        prompts = filtered_prompts
+
         responses = model.generate(prompts, sampling_params)
         outputs = [responses[i].outputs[0].text for i in range(len(responses))]
         data = [

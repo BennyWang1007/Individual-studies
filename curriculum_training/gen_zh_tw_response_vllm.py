@@ -67,6 +67,20 @@ def gen_zh_tw_response_vllm(
         for news in news_list
     ]
 
+    # Filter out prompts that are too long
+    filtered_prompts = []
+    filtered_ids = []
+    filtered_news = []
+    for i, prompt in enumerate(prompts):
+        if len(prompt) > MAX_INPUT_LENGTH:
+            continue
+        filtered_prompts.append(prompt)
+        filtered_ids.append(id_list[i])
+        filtered_news.append(news_list[i])
+    id_list = filtered_ids
+    news_list = filtered_news
+    prompts = filtered_prompts
+
     sampling_params = SamplingParams(
         temperature=0.7,
         top_p=0.95,
