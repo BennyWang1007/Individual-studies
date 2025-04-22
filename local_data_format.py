@@ -223,7 +223,7 @@ def local_data_format_main() -> None:
             essentials, triples = extract_essentials_and_triples(output)
         except Exception as e:
             logger.error(f"Error processing NWR {nwr.id}: {e}")
-            logger.error(f"Formatted response:\n{formatted_response}")
+            logger.error(f"Formatted response:\n{output}")
 
         nwr.essential_aspects = essentials
         nwr.triples = triples

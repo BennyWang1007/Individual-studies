@@ -62,8 +62,8 @@ class News(Headline):
         self.content = self.content.strip()
         if not self.time:
             raise ValueError("Time cannot be empty")
-        if not self.content:
-            raise ValueError("Content cannot be empty")
+        # if not self.content:
+        #     raise ValueError("Content cannot be empty")
 
     def __str__(self) -> str:
         return f"""\

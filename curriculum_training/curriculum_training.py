@@ -11,7 +11,7 @@ from transformers import (
     TrainingArguments,
 )
 
-from .constants import FORMATTED_NWR_FILE, MODEL_BASE, MAX_INPUT_LENGTH
+from .constants import NWR_TRAINING_FILE, MODEL_BASE, MAX_INPUT_LENGTH
 from .curriculum_utils import DifficultyLevels, load_curriculum_datasets
 from crawler.utils import Logger, TERM_COLORS
 
@@ -33,7 +33,7 @@ training_logger.info(f"Fine-tuning model: {model_name}")
 tokenizer = AutoTokenizer.from_pretrained(model_path)
 tokenizer.padding_side = "left"
 
-DATASET_NAME = FORMATTED_NWR_FILE
+DATASET_NAME = NWR_TRAINING_FILE
 # count the number of news in the dataset
 with open(DATASET_NAME, "r", encoding="utf-8") as f:
     news_count = sum(1 for _ in f)
