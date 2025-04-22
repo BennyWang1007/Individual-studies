@@ -224,6 +224,7 @@ def local_data_format_main() -> None:
         except Exception as e:
             logger.error(f"Error processing NWR {nwr.id}: {e}")
             logger.error(f"Formatted response:\n{output}")
+            continue
 
         nwr.essential_aspects = essentials
         nwr.triples = triples
