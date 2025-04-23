@@ -108,8 +108,17 @@ def local_gen_response(
         news_list = filtered_news
         prompts = filtered_prompts
 
-        responses = model.generate(prompts, sampling_params)
-        outputs = [responses[i].outputs[0].text for i in range(len(responses))]
+        batched_responses = []
+        batch_size = 1000
+        for i in range(0, len(prompts), batch_size):
+            batch_prompts = prompts[i:i + batch_size]
+            responses = model.generate(batch_prompts, sampling_params)
+            batched_responses.extend(responses)
+
+        outputs = [
+            batched_responses[i].outputs[0].text
+            for i in range(len(batched_responses))
+        ]
         data = [
             {
                 "id": id_list[i],

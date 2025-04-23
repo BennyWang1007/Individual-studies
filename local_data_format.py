@@ -164,6 +164,7 @@ def local_data_format_main() -> None:
     logger.info(f"Remains {len(ids)} NWR to process")
     logger.info(f"Remains NWR ids: {int_set_str(set(ids))}")
 
+    outputs: list[str] = []
     if USE_VLLM:
         sys_prompt = get_format_system_prompt()
         tokenizer = AutoTokenizer.from_pretrained(FORMAT_MODEL)
@@ -203,10 +204,14 @@ def local_data_format_main() -> None:
             max_seq_len_to_capture=MAX_INPUT_LENGTH,
             task="generate",
         )
-        responses = llm.generate(prompts, sampling_params)
-        outputs = [responses[i].outputs[0].text for i in range(len(responses))]
+        batch_size = 1000
+        for i in range(0, len(prompts), batch_size):
+            batch_prompts = prompts[i:i + batch_size]
+            responses = llm.generate(batch_prompts, sampling_params)
+            outputs.extend([
+                responses[j].outputs[0].text for j in range(len(responses))
+            ])
     else:
-        outputs = []
         for i, nwr in tqdm(
             enumerate(nwr_list),
             total=len(nwr_list), desc="Generating NWRs with Ollama"
