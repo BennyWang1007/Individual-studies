@@ -4,7 +4,6 @@ import ollama
 from ollama import ChatResponse, chat
 from tqdm import tqdm
 from transformers import AutoTokenizer
-from vllm import LLM, SamplingParams
 
 from crawler.utils import Logger
 from curriculum_training.gen_zh_tw_response import gen_zh_tw_response
@@ -21,6 +20,9 @@ from utils import (
     get_response_filename,
     load_udn_news,
     # int_set_str,
+    init_vllm_model,
+    filter_by_max_length,
+    vllm_batch_generate,
 )
 
 # MODELNAME = "deepseek-r1:14b"  # 60~80 sec
@@ -55,24 +57,15 @@ def local_gen_response(
         return data
 
     if USE_VLLM:
-        model = LLM(
-            model=MODELNAME_VLLM,
-            dtype="bfloat16",
-            max_model_len=MAX_INPUT_LENGTH + MAX_NEW_TOKENS,
-            max_seq_len_to_capture=MAX_INPUT_LENGTH,
-            task="generate",
-        )
         tokenizer = AutoTokenizer.from_pretrained(MODELNAME_VLLM)
 
-        sampling_params = SamplingParams(
-            temperature=0.7,
-            top_p=0.95,
-            # top_k=40,
-            max_tokens=MAX_NEW_TOKENS,
-            # stop=["\n\n"]
+        model, sampling_params = init_vllm_model(
+            model_name=modelname,
+            max_input_length=MAX_INPUT_LENGTH,
+            max_new_tokens=MAX_NEW_TOKENS
         )
 
-        prompts = [
+        prompts: list[str] = [
             tokenizer.apply_chat_template(
                 [
                     {
@@ -95,30 +88,12 @@ def local_gen_response(
         ]
 
         # Filter out prompts that are too long
-        filtered_prompts = []
-        filtered_ids = []
-        filtered_news = []
-        for i, prompt in enumerate(prompts):
-            if len(prompt) > MAX_INPUT_LENGTH:
-                continue
-            filtered_prompts.append(prompt)
-            filtered_ids.append(id_list[i])
-            filtered_news.append(news_list[i])
-        id_list = filtered_ids
-        news_list = filtered_news
-        prompts = filtered_prompts
+        prompts, id_list, news_list = filter_by_max_length(
+            MAX_INPUT_LENGTH, prompts, id_list, news_list
+        )
 
-        batched_responses = []
-        batch_size = 1000
-        for i in range(0, len(prompts), batch_size):
-            batch_prompts = prompts[i:i + batch_size]
-            responses = model.generate(batch_prompts, sampling_params)
-            batched_responses.extend(responses)
-
-        outputs = [
-            batched_responses[i].outputs[0].text
-            for i in range(len(batched_responses))
-        ]
+        responses = vllm_batch_generate(model, prompts, sampling_params)
+        outputs = [response.outputs[0].text for response in responses]
         data = [
             {
                 "id": id_list[i],

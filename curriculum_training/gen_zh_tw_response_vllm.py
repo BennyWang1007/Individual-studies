@@ -4,7 +4,6 @@ import sys
 from opencc import OpenCC
 from transformers import AutoTokenizer
 from tqdm import tqdm
-from vllm import LLM, SamplingParams
 
 from .constants import (
     MODEL_BASE,
@@ -17,7 +16,12 @@ from .curriculum_utils import (
     PREFIX_OF_DIFFICULTY_LEVELS,
 )
 from crawler.utils import Logger
-from utils import get_zh_tw_filename, load_udn_news
+from utils import (
+    get_zh_tw_filename,
+    load_udn_news,
+    init_vllm_model,
+    filter_by_max_length,
+)
 
 gen_logger = Logger("data_gen_vllm", verbose_level=3)
 
@@ -45,13 +49,9 @@ def gen_zh_tw_response_vllm(
 
     sys_prompt = PREFIX_OF_DIFFICULTY_LEVELS[DL.DIRECT_SUMMARY]
 
-    # Initialize vLLM and tokenizer
-    llm = LLM(
-        model=model_base,
-        dtype="bfloat16",
-        max_model_len=MAX_INPUT_LENGTH + MAX_NEW_TOKENS,
-        max_seq_len_to_capture=MAX_INPUT_LENGTH,
-        task="generate",
+    # Initialize vLLM, tokenizer and sampling parameters
+    llm, sampling_params = init_vllm_model(
+        model_base, MAX_INPUT_LENGTH, MAX_NEW_TOKENS
     )
     tokenizer = AutoTokenizer.from_pretrained(model_base)
 
@@ -68,25 +68,17 @@ def gen_zh_tw_response_vllm(
     ]
 
     # Filter out prompts that are too long
-    filtered_prompts = []
-    filtered_ids = []
-    filtered_news = []
-    for i, prompt in enumerate(prompts):
-        if len(prompt) > MAX_INPUT_LENGTH:
-            continue
-        filtered_prompts.append(prompt)
-        filtered_ids.append(id_list[i])
-        filtered_news.append(news_list[i])
-    id_list = filtered_ids
-    news_list = filtered_news
-    prompts = filtered_prompts
-
-    sampling_params = SamplingParams(
-        temperature=0.7,
-        top_p=0.95,
-        max_tokens=MAX_NEW_TOKENS,
+    prompts, id_list, news_list = filter_by_max_length(
+        MAX_INPUT_LENGTH, prompts, id_list, news_list
     )
-    outputs = llm.generate(prompts, sampling_params)
+    gen_logger.info(f"Filtered prompts: {len(prompts)}")
+
+    outputs = []
+    batch_size = 1000
+    for i in range(0, len(prompts), batch_size):
+        batch_prompts = prompts[i:i + batch_size]
+        responses = llm.generate(batch_prompts, sampling_params)
+        outputs.extend(responses)
 
     for id, news, output in tqdm(
         zip(id_list, news_list, outputs),

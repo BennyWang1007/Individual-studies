@@ -15,9 +15,9 @@ from .curriculum_training.curriculum_utils import (
 )
 from crawler.utils import Logger
 from news_with_rationale import NewsWithRationale
+from utils import init_vllm_model, filter_by_max_length
 
 if USE_VLLM:
-    from vllm import LLM, SamplingParams
     from transformers import AutoTokenizer
 else:
     import ollama
@@ -128,17 +128,11 @@ def judge_summary_1_to_20(
                 articles, gen_sums, ground_truths
             )
         ]
-        llm = LLM(
-            model=judge_model,
-            dtype="bfloat16",
-            max_model_len=MAX_INPUT_LENGTH + MAX_NEW_TOKENS,
-            max_seq_len_to_capture=MAX_INPUT_LENGTH,
-            task="generate",
+        llm, sampling_params = init_vllm_model(
+            judge_model, MAX_INPUT_LENGTH, MAX_NEW_TOKENS
         )
-        sampling_params = SamplingParams(
-            temperature=0.7,
-            top_p=0.95,
-            max_tokens=MAX_NEW_TOKENS,
+        prompts, articles, gen_sums, ground_truths = filter_by_max_length(
+            MAX_INPUT_LENGTH, prompts, articles, gen_sums, ground_truths
         )
         responses = llm.generate(prompts, sampling_params)
         outputs = [response.outputs[0].text for response in responses]
@@ -203,17 +197,8 @@ def benchmark_model(modelname: str) -> dict:
             )
             for nwr in nwrs
         ]
-        llm = LLM(
-            model=modelname,
-            dtype="bfloat16",
-            max_model_len=MAX_INPUT_LENGTH + MAX_NEW_TOKENS,
-            max_seq_len_to_capture=MAX_INPUT_LENGTH,
-            task="generate",
-        )
-        sampling_params = SamplingParams(
-            temperature=0.7,
-            top_p=0.95,
-            max_tokens=MAX_NEW_TOKENS,
+        llm, sampling_params = init_vllm_model(
+            modelname, MAX_INPUT_LENGTH, MAX_NEW_TOKENS
         )
         responses_raw = llm.generate(prompts, sampling_params)
         responses = [response.outputs[0].text for response in responses_raw]

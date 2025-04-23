@@ -4,7 +4,6 @@ import ollama
 from opencc import OpenCC
 from ollama import chat
 from tqdm import tqdm
-from vllm import LLM, SamplingParams
 
 from crawler.utils import Logger
 from curriculum_training.constants import (
@@ -15,7 +14,13 @@ from curriculum_training.constants import (
     USE_VLLM,
 )
 from news_with_rationale import NewsWithRationale
-from utils import get_news_with_rationale_filename, int_set_str
+from utils import (
+    get_news_with_rationale_filename,
+    int_set_str,
+    init_vllm_model,
+    filter_by_max_length,
+    vllm_batch_generate,
+)
 
 if USE_VLLM:
     from transformers import AutoTokenizer
@@ -164,9 +169,12 @@ def local_data_format_main() -> None:
     logger.info(f"Remains {len(ids)} NWR to process")
     logger.info(f"Remains NWR ids: {int_set_str(set(ids))}")
 
-    outputs: list[str] = []
+    output_strs: list[str] = []
     if USE_VLLM:
         sys_prompt = get_format_system_prompt()
+        model, sampling_params = init_vllm_model(
+            FORMAT_MODEL, MAX_INPUT_LENGTH, MAX_NEW_TOKENS
+        )
         tokenizer = AutoTokenizer.from_pretrained(FORMAT_MODEL)
         prompts = [
             tokenizer.apply_chat_template(
@@ -181,48 +189,23 @@ def local_data_format_main() -> None:
         ]
 
         # Filter out prompts that are too long
-        filtered_prompts = []
-        filtered_nwrs = []
-        for i, prompt in enumerate(prompts):
-            if len(prompt) > MAX_INPUT_LENGTH:
-                continue
-            filtered_prompts.append(prompt)
-            filtered_nwrs.append(nwr_list[i])
-        nwr_list = filtered_nwrs
-        prompts = filtered_prompts
+        prompts, nwr_list = filter_by_max_length(
+            MAX_INPUT_LENGTH, prompts, nwr_list
+        )
 
-        sampling_params = SamplingParams(
-            temperature=0.7,
-            top_p=0.95,
-            max_tokens=MAX_NEW_TOKENS,
-        )
-        # load the model last for better debugging
-        llm = LLM(
-            model=FORMAT_MODEL,
-            dtype="bfloat16",
-            max_model_len=MAX_INPUT_LENGTH + MAX_NEW_TOKENS,
-            max_seq_len_to_capture=MAX_INPUT_LENGTH,
-            task="generate",
-        )
-        batch_size = 1000
-        for i in range(0, len(prompts), batch_size):
-            batch_prompts = prompts[i:i + batch_size]
-            responses = llm.generate(batch_prompts, sampling_params)
-            outputs.extend([
-                responses[j].outputs[0].text for j in range(len(responses))
-            ])
+        responses = vllm_batch_generate(model, prompts, sampling_params)
+        output_strs = [response.outputs[0].text for response in responses]
+
     else:
-        for i, nwr in tqdm(
-            enumerate(nwr_list),
-            total=len(nwr_list), desc="Generating NWRs with Ollama"
-        ):
+        desc = "Generating NWRs with Ollama"
+        for nwr in tqdm(nwr_list, total=len(nwr_list), desc=desc):
             # Process each NewsWithRationale object
             formatted_response = process_nwr(nwr)
-            outputs.append(formatted_response)
+            output_strs.append(formatted_response)
 
     for i, (nwr, output) in tqdm(
-        enumerate(zip(nwr_list, outputs)),
-        total=len(outputs), desc="Formatting NWRs"
+        enumerate(zip(nwr_list, output_strs)),
+        total=len(output_strs), desc="Formatting NWRs"
     ):
         try:
             essentials, triples = extract_essentials_and_triples(output)
