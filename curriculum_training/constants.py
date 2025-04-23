@@ -21,6 +21,7 @@ GENARATED_ZH_TW_FILE = get_zh_tw_filename(MODEL_BASE)
 
 # FORMATTED_NWR_FILE = get_formatted_nwr_filename(MODEL_DISTAL_FROM)
 FORMATTED_NWR_FILE = "formatted_nwr.jsonl"
+FORMATTED_NWR_FILE2 = "formatted_nwr2.jsonl"
 NWR_TRAINING_FILE = "formatted_nwr_training.jsonl"
 NWR_BENCHMARK_FILE = "formatted_nwr_benchmark.jsonl"
 
