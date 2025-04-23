@@ -11,11 +11,12 @@ from transformers import (
     TrainingArguments,
 )
 
-from .constants import NWR_TRAINING_FILE, MODEL_BASE, MAX_INPUT_LENGTH
+from .constants import NWR_TRAINING_FILE, MODEL_BASE, MAX_TRAINING_INPUT_LENGTH
 from .curriculum_utils import DifficultyLevels, load_curriculum_datasets
 from crawler.utils import Logger, TERM_COLORS
 
 USE_GPU = True and torch.cuda.is_available()
+MAX_INPUT_LENGTH = MAX_TRAINING_INPUT_LENGTH
 
 if USE_GPU:
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Use only first GPU
@@ -39,7 +40,7 @@ with open(DATASET_NAME, "r", encoding="utf-8") as f:
     news_count = sum(1 for _ in f)
 training_logger.info(f"Total news count: {news_count}")
 
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 EPOCH = 3
 
 if USE_GPU:
@@ -50,7 +51,7 @@ else:
     device = torch.device("cpu")
 
 
-def get_training_args(difficulty_level: DifficultyLevels):
+def get_training_args(difficulty_level: DifficultyLevels, train_dataset=None):
 
     match difficulty_level:
         case DifficultyLevels.TO_ZHT:
@@ -66,6 +67,8 @@ def get_training_args(difficulty_level: DifficultyLevels):
         case _:
             raise Exception("Invalid difficulty level")
 
+    steps_per_epoch = len(train_dataset) // BATCH_SIZE
+
     # Training arguments
     return TrainingArguments(
         output_dir="./qwen2.5-finetuned",
@@ -75,7 +78,7 @@ def get_training_args(difficulty_level: DifficultyLevels):
         per_device_eval_batch_size=BATCH_SIZE,
         num_train_epochs=EPOCH,
         logging_dir="./logs",
-        logging_steps=10,
+        logging_steps=max(steps_per_epoch // 10, 1),
         # report_to="none",
         report_to=["tensorboard"],
         learning_rate=learning_rate,
@@ -103,7 +106,7 @@ def tokenize_function(sample: Dataset):
     return tokenized_inputs
 
 
-def check_to_filter(messages: dict) -> bool:
+def check_to_filter(messages: list[dict]) -> bool:
     """ Check if the input is too long to be processed by the model """
     tokenized_inputs = tokenizer.apply_chat_template(
         messages,
@@ -193,7 +196,7 @@ def curriculum_training(
 
         trainer = Trainer(
             model=model,
-            args=get_training_args(DifficultyLevels(i)),
+            args=get_training_args(DifficultyLevels(i), train_dataset),
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
         )
@@ -235,6 +238,11 @@ def curriculum_trianing_main() -> None:
         # dataset = dataset[:80]
 
         texts: list[dict] = []  # a list contains the input and output texts
+
+        training_logger.info(
+            f"Difficulty level {difficulty_level.name}: {len(dataset)} samples"
+        )
+
         for i, (sys_prompt, user_prompt, out_str) in enumerate(dataset):
 
             messages = [
@@ -242,6 +250,10 @@ def curriculum_trianing_main() -> None:
                 {"role": "user", "content": user_prompt},
                 {"role": "assistant", "content": out_str},
             ]
+
+            if check_to_filter(messages):
+                continue
+
             full_text = tokenizer.apply_chat_template(
                 messages,
                 tokenize=False,
@@ -256,6 +268,7 @@ def curriculum_trianing_main() -> None:
                 "output": text_out
             })
 
+        training_logger.info(f"After filtering: {len(texts)} samples")
         curriculum_texts.append(texts)
 
     curriculum_datasets: list[Dataset] = [
@@ -335,6 +348,9 @@ def curriculum_trianing_main() -> None:
         DifficultyLevels.DIRECT_SUMMARY,
     ]
     curriculum_training(train_datasets, eval_datasets, stages)
+
+    # free up memory
+    torch.cuda.empty_cache()
 
     """ ---------------- Curriculum Training for 4 stages ---------------- """
     stages = [
