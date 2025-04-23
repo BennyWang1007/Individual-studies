@@ -32,12 +32,14 @@ from utils import (
 # MODELNAME = "qwen:32b"        # 25.77 sec
 # MODELNAME = "qwen2.5:32b"     # 26.7 sec
 # MODELNAME = "qwen2.5:72b"     # TLE
-MODELNAME = "qwen2.5:32b-instruct-q6_K"  # 94.55 sec
+MODELNAME_OLLAMA = "qwen2.5:32b-instruct-q6_K"  # 94.55 sec
 # MODELNAME = "qwen2.5:32b-instruct-q8_0" # mem-full, 42.73 sec
 MODELNAME_VLLM = "Qwen/Qwen2.5-32B-Instruct"
-# MODELNAME_VLLM = "Qwen/Qwen2.5-0.5B-Instruct"
+
 
 gen_logger = Logger("data_gen", verbose_level=3)
+
+MODELNAME = MODELNAME_VLLM if USE_VLLM else MODELNAME_OLLAMA
 
 RESPONSE_FILE = get_response_filename(MODELNAME)
 NWR_FILE = get_news_with_rationale_filename(MODELNAME)
@@ -146,35 +148,48 @@ def get_finished_id() -> tuple[set[int], set[int], set[int]]:
     """
     # find finishded ids
     finished_news_ids: set[int] = set()
-    with open(RESPONSE_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            news = json.loads(line)
-            if news["id"] in finished_news_ids:
-                gen_logger.warning(f"Duplicated news id: {news['id']}")
-                continue
-            finished_news_ids.add(news["id"])
-    gen_logger.info(f"Finished news ids count: {len(finished_news_ids)}")
+    try:
+        with open(RESPONSE_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                news = json.loads(line)
+                if news["id"] in finished_news_ids:
+                    gen_logger.warning(f"Duplicated news id: {news['id']}")
+                    continue
+                finished_news_ids.add(news["id"])
+        gen_logger.info(f"Finished news ids count: {len(finished_news_ids)}")
+    except FileNotFoundError:
+        gen_logger.warning(f"{RESPONSE_FILE} not found, starting from scratch.")
+        finished_news_ids = set()
 
     # find finished NWR ids
     finished_NWR_ids: set[int] = set()
-    with open(NWR_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            news = json.loads(line)
-            if news["id"] in finished_NWR_ids:
-                gen_logger.warning(f"Duplicated NWR id: {news['id']}")
-                continue
-            finished_NWR_ids.add(news["id"])
-    gen_logger.info(f"Finished NWR ids count: {len(finished_NWR_ids)}")
+    try:
+        with open(NWR_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                news = json.loads(line)
+                if news["id"] in finished_NWR_ids:
+                    gen_logger.warning(f"Duplicated NWR id: {news['id']}")
+                    continue
+                finished_NWR_ids.add(news["id"])
+        gen_logger.info(f"Finished NWR ids count: {len(finished_NWR_ids)}")
+    except FileNotFoundError:
+        gen_logger.warning(f"{NWR_FILE} not found, starting from scratch.")
+        finished_NWR_ids = set()
 
-    finished_zh_tw_ids: set[int] = set()
-    with open(ZH_TW_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            news = json.loads(line)
-            if news["id"] in finished_zh_tw_ids:
-                gen_logger.warning(f"Duplicated zh-tw id: {news['id']}")
-                continue
-            finished_zh_tw_ids.add(news["id"])
-    gen_logger.info(f"Finished zh-tw ids count: {len(finished_zh_tw_ids)}")
+    # find finished zh-tw ids
+    try:
+        finished_zh_tw_ids: set[int] = set()
+        with open(ZH_TW_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                news = json.loads(line)
+                if news["id"] in finished_zh_tw_ids:
+                    gen_logger.warning(f"Duplicated zh-tw id: {news['id']}")
+                    continue
+                finished_zh_tw_ids.add(news["id"])
+        gen_logger.info(f"Finished zh-tw ids count: {len(finished_zh_tw_ids)}")
+    except FileNotFoundError:
+        gen_logger.warning(f"{ZH_TW_FILE} not found, starting from scratch.")
+        finished_zh_tw_ids = set()
 
     finished_news_ids = finished_news_ids.union(finished_NWR_ids)
 
