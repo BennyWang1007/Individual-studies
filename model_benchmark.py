@@ -3,19 +3,20 @@ import json
 import bert_score
 from rouge_score import rouge_scorer
 
-from .curriculum_training.constants import (
+from curriculum_training.constants import (
     USE_VLLM,
     MAX_INPUT_LENGTH,
     MAX_NEW_TOKENS,
     NWR_BENCHMARK_FILE,
+    NWR_TRAINING_FILE,
 )
-from .curriculum_training.curriculum_utils import (
+from curriculum_training.curriculum_utils import (
     DifficultyLevels as DL,
     PREFIX_OF_DIFFICULTY_LEVELS,
 )
 from crawler.utils import Logger
 from news_with_rationale import NewsWithRationale
-from utils import init_vllm_model, filter_by_max_length
+from utils import init_vllm_model, filter_by_max_length, vllm_batch_generate
 
 if USE_VLLM:
     from transformers import AutoTokenizer
@@ -26,7 +27,7 @@ else:
 DATASET_NAME = NWR_BENCHMARK_FILE
 
 # count the number of news in the dataset
-with open(DATASET_NAME, "r", encoding="utf-8") as f:
+with open(NWR_TRAINING_FILE, "r", encoding="utf-8") as f:
     news_count = sum(1 for _ in f)
 
 
@@ -134,7 +135,7 @@ def judge_summary_1_to_20(
         prompts, articles, gen_sums, ground_truths = filter_by_max_length(
             MAX_INPUT_LENGTH, prompts, articles, gen_sums, ground_truths
         )
-        responses = llm.generate(prompts, sampling_params)
+        responses = vllm_batch_generate(llm, prompts, sampling_params, 500)
         outputs = [response.outputs[0].text for response in responses]
     else:
         ollama.pull(judge_model)
@@ -200,7 +201,8 @@ def benchmark_model(modelname: str) -> dict:
         llm, sampling_params = init_vllm_model(
             modelname, MAX_INPUT_LENGTH, MAX_NEW_TOKENS
         )
-        responses_raw = llm.generate(prompts, sampling_params)
+        prompts = [pt for pt in prompts if len(pt) <= MAX_INPUT_LENGTH]
+        responses_raw = vllm_batch_generate(llm, prompts, sampling_params, 500)
         responses = [response.outputs[0].text for response in responses_raw]
     else:
         ollama.pull(modelname)

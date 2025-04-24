@@ -181,7 +181,7 @@ def local_data_format_summary_main() -> None:
             MAX_INPUT_LENGTH, prompts, nwr_list
         )
 
-        responses = vllm_batch_generate(model, prompts, sampling_params, 20)
+        responses = vllm_batch_generate(model, prompts, sampling_params)
         output_strs = [response.outputs[0].text for response in responses]
 
     else:
