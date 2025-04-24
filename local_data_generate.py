@@ -20,10 +20,14 @@ from utils import (
     get_response_filename,
     load_udn_news,
     # int_set_str,
-    init_vllm_model,
-    filter_by_max_length,
-    vllm_batch_generate,
 )
+
+if USE_VLLM:
+    from utils_vllm import (
+        init_vllm_model,
+        filter_by_max_length,
+        vllm_batch_generate,
+    )
 
 # MODELNAME = "deepseek-r1:14b"  # 60~80 sec
 # MODELNAME = "deepseek-r1:7b"  # 9.3 sec
@@ -158,7 +162,7 @@ def get_finished_id() -> tuple[set[int], set[int], set[int]]:
                 finished_news_ids.add(news["id"])
         gen_logger.info(f"Finished news ids count: {len(finished_news_ids)}")
     except FileNotFoundError:
-        gen_logger.warning(f"{RESPONSE_FILE} not found, starting from scratch.")
+        gen_logger.info(f"{RESPONSE_FILE} not found, starting from scratch.")
         finished_news_ids = set()
 
     # find finished NWR ids

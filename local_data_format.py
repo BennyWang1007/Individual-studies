@@ -14,16 +14,15 @@ from curriculum_training.constants import (
     USE_VLLM,
 )
 from news_with_rationale import NewsWithRationale
-from utils import (
-    get_news_with_rationale_filename,
-    int_set_str,
-    init_vllm_model,
-    filter_by_max_length,
-    vllm_batch_generate,
-)
+from utils import get_news_with_rationale_filename, int_set_str
 
 if USE_VLLM:
     from transformers import AutoTokenizer
+    from utils_vllm import (
+        init_vllm_model,
+        filter_by_max_length,
+        vllm_batch_generate,
+    )
 
 FORMAT_MODEL = "Qwen/Qwen2.5-14B-Instruct"
 # FORMAT_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"

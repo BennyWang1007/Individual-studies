@@ -1,10 +1,11 @@
 import json
+import os
 
 import bert_score
 from rouge_score import rouge_scorer
 
 from curriculum_training.constants import (
-    USE_VLLM,
+    # USE_VLLM,
     MAX_INPUT_LENGTH,
     MAX_NEW_TOKENS,
     NWR_BENCHMARK_FILE,
@@ -16,10 +17,18 @@ from curriculum_training.curriculum_utils import (
 )
 from crawler.utils import Logger
 from news_with_rationale import NewsWithRationale
-from utils import init_vllm_model, filter_by_max_length, vllm_batch_generate
+from utils import legalize_filename
+
+USE_VLLM = True
 
 if USE_VLLM:
     from transformers import AutoTokenizer
+    from utils_vllm import (
+        init_vllm_model,
+        filter_by_max_length,
+        vllm_batch_generate,
+        cleanup,
+    )
 else:
     import ollama
     from ollama import chat
@@ -32,10 +41,14 @@ with open(NWR_TRAINING_FILE, "r", encoding="utf-8") as f:
 
 
 JUDGE_MODELNAME_OLLAMA = "qwen2.5:32b-instruct-q6_K"
-JUDGE_MODELNAME = "Qwen/Qwen2.5-32B-Instruct"
+JUDGE_MODELNAME_LLVM = "Qwen/Qwen2.5-32B-Instruct"
+
+JUDGE_MODELNAME = JUDGE_MODELNAME_LLVM if USE_VLLM else JUDGE_MODELNAME_OLLAMA
 
 TEST_MODELS = [
     "Qwen/Qwen2.5-0.5B-Instruct",
+    "Qwen/Qwen2.5-3B-Instruct",
+    # # "qwen2.5:3b-instruct"
     "Qwen/Qwen2.5-14B-Instruct",
     f"./qwen2.5-curriculum-trained_{news_count}news_4stage_A100",
     f"./qwen2.5-curriculum-trained_{news_count}news_5stage_A100",
@@ -45,7 +58,7 @@ eval_logger = Logger("eval score", verbose_level=3)
 eval_logger.info(f"Total news count: {news_count}")
 
 
-def evaluate_with_rouge(predictions, references):
+def evaluate_with_rouge(predictions, references) -> list[dict]:
     scorer = rouge_scorer.RougeScorer(['rouge1', 'rougeL'], use_stemmer=True)
     scores = [
         scorer.score(pred, ref) for pred, ref in zip(predictions, references)
@@ -53,7 +66,7 @@ def evaluate_with_rouge(predictions, references):
     return scores
 
 
-def evaluate_with_bertscore(predictions, references):
+def evaluate_with_bertscore(predictions, references) -> dict:
     P, R, F1 = bert_score.score(
         predictions, references, lang="en", verbose=False
     )
@@ -109,8 +122,9 @@ def judge_summary_1_to_20(
     """
     assert len(articles) == len(gen_sums) == len(ground_truths)
     sys_prompt = judge_summary_1_to_20_prompt_sys()
-    tokenizer = AutoTokenizer.from_pretrained(judge_model)
+
     if USE_VLLM:
+        tokenizer = AutoTokenizer.from_pretrained(judge_model)
         prompts = [
             tokenizer.apply_chat_template(
                 [
@@ -135,8 +149,10 @@ def judge_summary_1_to_20(
         prompts, articles, gen_sums, ground_truths = filter_by_max_length(
             MAX_INPUT_LENGTH, prompts, articles, gen_sums, ground_truths
         )
-        responses = vllm_batch_generate(llm, prompts, sampling_params, 500)
+        responses = vllm_batch_generate(llm, prompts, sampling_params)
         outputs = [response.outputs[0].text for response in responses]
+        del llm, tokenizer, sampling_params
+        cleanup()
     else:
         ollama.pull(judge_model)
 
@@ -163,30 +179,39 @@ def judge_summary_1_to_20(
     scores = []
     for output in outputs:
         # Extract the score from the output
-        try:
-            score = int(output.split("Score:")[1].split(" —")[0].strip())
-            scores.append(score)
-        except (ValueError, IndexError):
-            eval_logger.error(f"Invalid output format: {output}")
-            scores.append(-1)
+        # print(output)
+        score = -1
+        if "Score:" in output:
+            try:
+                score = int(output.split("Score:")[1].split(" —")[0].strip())
+            except (ValueError, IndexError):
+                eval_logger.error(f"Invalid output format: {output}")
+        else:
+            try:
+                score = int(output.strip())
+            except ValueError:
+                eval_logger.error(f"Invalid output format: {output}")
+        scores.append(score)
 
     return scores
 
 
-def benchmark_model(modelname: str) -> dict:
+def benchmark_model(model_name: str, save_results: bool = True) -> dict:
 
-    nwrs = []
+    nwrs: list[NewsWithRationale] = []
     with open(DATASET_NAME, "r", encoding="utf-8") as f:
         for line in f:
             data = json.loads(line)
             nwrs.append(NewsWithRationale.from_dict(data))
+
+    # nwrs = nwrs[:10]  # for demonstration
     news_list = [nwr.article for nwr in nwrs]
     summaries = [nwr.summary for nwr in nwrs]
 
     """ ----------------------- Generate responses ----------------------- """
     sys_prompt = PREFIX_OF_DIFFICULTY_LEVELS[DL.DIRECT_SUMMARY]
     if USE_VLLM:
-        tokenizer = AutoTokenizer.from_pretrained(modelname)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
         prompts = [
             tokenizer.apply_chat_template(
                 [
@@ -199,18 +224,22 @@ def benchmark_model(modelname: str) -> dict:
             for nwr in nwrs
         ]
         llm, sampling_params = init_vllm_model(
-            modelname, MAX_INPUT_LENGTH, MAX_NEW_TOKENS
+            model_name, MAX_INPUT_LENGTH, MAX_NEW_TOKENS
         )
-        prompts = [pt for pt in prompts if len(pt) <= MAX_INPUT_LENGTH]
-        responses_raw = vllm_batch_generate(llm, prompts, sampling_params, 500)
+        prompts, news_list, summaries = filter_by_max_length(
+            MAX_INPUT_LENGTH, prompts, news_list, summaries
+        )
+        responses_raw = vllm_batch_generate(llm, prompts, sampling_params)
         responses = [response.outputs[0].text for response in responses_raw]
+        del llm, tokenizer, sampling_params
+        cleanup()
     else:
-        ollama.pull(modelname)
+        ollama.pull(model_name)
         responses = []
         for nwr in nwrs:
             # Process each NewsWithRationale object
             gen_response = chat(
-                model=modelname,
+                model=model_name,
                 messages=[
                     {"role": "system", "content": sys_prompt},
                     {"role": "user", "content": "article:\n" + nwr.article}
@@ -234,32 +263,71 @@ def benchmark_model(modelname: str) -> dict:
     """ ------------------------- Evaluations ------------------------- """
     rouge_scores = evaluate_with_rouge(processed_responses, summaries)
     bert_scores = evaluate_with_bertscore(processed_responses, summaries)
-
     judge_scores = judge_summary_1_to_20(
         news_list,
         processed_responses,
         summaries,
-        judge_model=JUDGE_MODELNAME if USE_VLLM else JUDGE_MODELNAME_OLLAMA
+        judge_model=JUDGE_MODELNAME
     )
     judge_scores = [score for score in judge_scores if score > 0]
 
-    return {
-        "predictions": processed_responses,
-        "judge_scores": judge_scores,
-        "rouge_scores": rouge_scores,
+    results = {
+        "model_name": model_name,
+        "num_samples": len(nwrs),
+        "judge_model": JUDGE_MODELNAME,
+        "avg_bert_scores": avg_bert_scores(bert_scores),
+        "avg_rouge_scores": avg_rouge_scores(rouge_scores),
+        "avg_judge_scores": avg_judge_scores(judge_scores),
         "bert_scores": bert_scores,
+        "rouge_scores": rouge_scores,
+        "judge_scores": judge_scores,
+        "predictions": processed_responses,
     }
+    eval_logger.info(f"Results for {model_name}:")
+    eval_logger.info(f"Bert scores: {results['avg_bert_scores']}")
+    eval_logger.info(f"Rouge scores: {results['avg_rouge_scores']}")
+    eval_logger.info(f"Judge scores: {results['avg_judge_scores']}")
+
+    if save_results:
+        save_name = legalize_filename(model_name)
+        filepath = f"benchmark_result/{save_name}_results.json"
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(results, f, indent=4, ensure_ascii=False)
+
+    return results
+
+
+def avg_rouge_scores(rouge_scores):
+    avg_scores = {}
+    for score in rouge_scores[0].keys():
+        avg_scores[score] = 0 if len(rouge_scores) == 0 else sum(
+            [rouge_score[score].fmeasure for rouge_score in rouge_scores]
+        ) / len(rouge_scores)
+    return avg_scores
+
+
+def avg_bert_scores(bert_scores):
+    avg_scores = {}
+    for score in bert_scores.keys():
+        avg_scores[score] = 0 if len(bert_scores) == 0 else sum(
+            [bert_score for bert_score in bert_scores[score]]
+        ) / len(bert_scores[score])
+    return avg_scores
+
+
+def avg_judge_scores(judge_scores):
+    avg_score = 0 if len(judge_scores) == 0 else sum(
+        judge_scores
+    ) / len(judge_scores)
+
+    # Normalize the score to a scale of 0 to 1
+    return avg_score / 20.0
 
 
 if __name__ == "__main__":
-    # Example usage
+    # create a directory to save the results
+    os.makedirs("benchmark_result", exist_ok=True)
+
     for model_name in TEST_MODELS:
         eval_logger.info(f"Evaluating model: {model_name}")
-        results = benchmark_model(model_name)
-        eval_logger.info(f"Results for {model_name}:")
-        eval_logger.info(f"Judge scores: {results['judge_scores']}")
-        eval_logger.info(f"Rouge scores: {results['rouge_scores']}")
-        eval_logger.info(f"Bert scores: {results['bert_scores']}")
-
-        with open(f"benchmark_result/{model_name}_results.json", "w") as f:
-            json.dump(results, f, indent=4)
+        results = benchmark_model(model_name, save_results=True)
