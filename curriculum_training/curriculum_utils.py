@@ -29,37 +29,37 @@ class DifficultyLevels(Enum):
     DIRECT_SUMMARY = 4
 
 
-# PREFIX_OF_DIFFICULTY_LEVELS = [
-#     "請為新聞生成摘要：",
-#     "請提取新聞中的核心要素：",
-#     "請根據提供的核心要素，提取新聞中的三元組：",
-#     "請根據提供的核心要素和三元組，為新聞生成摘要：",
-#     "請為新聞生成摘要："
-# ]
-
 PREFIX_OF_DIFFICULTY_LEVELS = {
-    DifficultyLevels.TO_ZHT:
-    "You are a helpful assistant. "
-    "Please generate a summary of the news article in Chinese. "
-    "The summary should be concise and informative.",
-    DifficultyLevels.ESSENTIAL_ASPECTS:
-    "You are a helpful assistant. "
-    "Please extract the essential aspects of the news article. "
-    "The essential aspects should be concise and informative.",
-    DifficultyLevels.TRIPLES:
-    "You are a helpful assistant. "
-    "Please extract the triples from the essential aspects of the news "
-    "article. "
-    "The triples should be in the format [ENTITY1 | RELATION | ENTITY2]",
-    DifficultyLevels.SUMMARY:
-    "You are a helpful assistant. "
-    "Please generate a summary of the news article based on the essential "
-    "aspects and triples. The summary should be concise and informative.",
-    DifficultyLevels.DIRECT_SUMMARY:
-    "You are a helpful assistant. "
-    "Please generate a summary of the news article. "
-    "The summary should be concise and informative."
+    DifficultyLevels.TO_ZHT: "請為新聞生成摘要：",
+    DifficultyLevels.ESSENTIAL_ASPECTS: "請提取新聞中的核心要素：",
+    DifficultyLevels.TRIPLES: "請根據提供的核心要素，提取新聞中的三元組：",
+    DifficultyLevels.SUMMARY: "請根據提供的核心要素和三元組，為新聞生成摘要：",
+    DifficultyLevels.DIRECT_SUMMARY: "請為新聞生成摘要：",
 }
+
+# PREFIX_OF_DIFFICULTY_LEVELS = {
+#     DifficultyLevels.TO_ZHT:
+#     "You are a helpful assistant. "
+#     "Please generate a summary of the news article in Chinese. "
+#     "The summary should be concise and informative.",
+#     DifficultyLevels.ESSENTIAL_ASPECTS:
+#     "You are a helpful assistant. "
+#     "Please extract the essential aspects of the news article. "
+#     "The essential aspects should be concise and informative.",
+#     DifficultyLevels.TRIPLES:
+#     "You are a helpful assistant. "
+#     "Please extract the triples from the essential aspects of the news "
+#     "article. "
+#     "The triples should be in the format [ENTITY1 | RELATION | ENTITY2]",
+#     DifficultyLevels.SUMMARY:
+#     "You are a helpful assistant. "
+#     "Please generate a summary of the news article based on the essential "
+#     "aspects and triples. The summary should be concise and informative.",
+#     DifficultyLevels.DIRECT_SUMMARY:
+#     "You are a helpful assistant. "
+#     "Please generate a summary of the news article. "
+#     "The summary should be concise and informative."
+# }
 
 
 @lru_cache(maxsize=1)
@@ -109,27 +109,50 @@ def load_curriculum_datasets(
             for line in f:
                 dat = json.loads(line)
                 ret.append((
-                    sys_str, f"article:\n{dat['news']}", dat['response_zh-tw']
+                    sys_str, f"新聞：\n{dat['news']}", dat['response_zh-tw']
                 ))
         return ret
 
+    # loader_fn: dict[DifficultyLevels, LoaderFunc] = {
+    #     DifficultyLevels.ESSENTIAL_ASPECTS: lambda d: (
+    #         sys_str, d.article_full_str(), d.essential_aspects_full_str()
+    #     ),
+    #     DifficultyLevels.TRIPLES: lambda d: (
+    #         sys_str,
+    #         f'{d.article_full_str()}\n\n{d.essential_aspects_full_str()}',
+    #         d.triples_str()
+    #     ),
+    #     DifficultyLevels.SUMMARY: lambda d: (
+    #         sys_str,
+    #         f'{d.article_full_str()}\n\n{d.essential_aspects_full_str()}\n\n'
+    #         f'{d.triples_full_str()}',
+    #         d.summary
+    #     ),
+    #     DifficultyLevels.DIRECT_SUMMARY:
+    #     lambda d: (sys_str, d.article_full_str(), "新聞摘要：\n" + d.summary)
+    # }
+
     loader_fn: dict[DifficultyLevels, LoaderFunc] = {
         DifficultyLevels.ESSENTIAL_ASPECTS: lambda d: (
-            sys_str, d.article_full_str(), d.essential_aspects_full_str()
+            sys_str, f"新聞：\n{d.article}", f"核心要素：\n{d.essential_aspects_str()}"
         ),
         DifficultyLevels.TRIPLES: lambda d: (
             sys_str,
-            f'{d.article_full_str()}\n\n{d.essential_aspects_full_str()}',
-            d.triples_str()
+            f"新聞：\n{d.article}\n\n核心要素：\n{d.essential_aspects_str()}",
+            f"三元組：\n{d.triples_str()}",
         ),
         DifficultyLevels.SUMMARY: lambda d: (
             sys_str,
-            f'{d.article_full_str()}\n\n{d.essential_aspects_full_str()}\n\n'
-            f'{d.triples_full_str()}',
-            d.summary
+            (
+                f"新聞：{d.article}\n\n"
+                f"核心要素：\n{d.essential_aspects_str()}\n\n"
+                f"三元組：\n{d.triples_str()}"
+            ),
+            f"新聞總結：{d.summary}",
         ),
-        DifficultyLevels.DIRECT_SUMMARY:
-        lambda d: (sys_str, d.article_full_str(), "新聞摘要：\n" + d.summary)
+        DifficultyLevels.DIRECT_SUMMARY: lambda d: (
+            sys_str, f"新聞：{d.article}", f"新聞總結：{d.summary}",
+        ),
     }
 
     return [loader_fn[difficulty_levels](d) for d in data]

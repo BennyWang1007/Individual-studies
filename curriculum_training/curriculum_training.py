@@ -24,7 +24,7 @@ if USE_GPU:
 training_logger = Logger("training", verbose_level=3)
 training_logger.info("curriculum_training.py started.")
 
-TRAINING = False  # Set to False to skip training
+TRAINING = True  # Set to False to skip training
 
 # model_name = "Qwen/Qwen2.5-0.5B"
 model_path = MODEL_BASE
@@ -32,12 +32,19 @@ model_name = model_path.split("/")[-1]
 training_logger.info(f"Fine-tuning model: {model_name}")
 
 tokenizer = AutoTokenizer.from_pretrained(model_path)
-tokenizer.padding_side = "left"
+# tokenizer.padding_side = "left"
+
+LIMIT_NEWS = True
+LIMIT_NEWS_COUNT = 5000
 
 DATASET_NAME = NWR_TRAINING_FILE
 # count the number of news in the dataset
 with open(DATASET_NAME, "r", encoding="utf-8") as f:
     news_count = sum(1 for _ in f)
+
+if LIMIT_NEWS:
+    news_count = min(news_count, LIMIT_NEWS_COUNT)
+
 training_logger.info(f"Total news count: {news_count}")
 
 BATCH_SIZE = 8
@@ -249,6 +256,7 @@ def curriculum_trianing_main() -> None:
         )
 
         total_tokens = 0
+        cur_news_count = 0
 
         for i, (sys_prompt, user_prompt, out_str) in enumerate(dataset):
 
@@ -274,6 +282,11 @@ def curriculum_trianing_main() -> None:
                 "input": text_in,
                 "output": text_out
             })
+
+            cur_news_count += 1
+
+            if LIMIT_NEWS and cur_news_count >= LIMIT_NEWS_COUNT:
+                break
 
         training_logger.info(f"After filtering: {len(texts)} samples")
         curriculum_texts.append(texts)

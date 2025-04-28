@@ -7,7 +7,7 @@ from rouge_score import rouge_scorer
 from tqdm import tqdm
 
 from curriculum_training.constants import (
-    # USE_VLLM,
+    USE_VLLM,
     MAX_BENCHMARK_LENGTH,
     MAX_NEW_TOKENS,
     NWR_BENCHMARK_FILE,
@@ -22,7 +22,6 @@ from crawler.utils import Logger
 from news_with_rationale import NewsWithRationale
 from utils import legalize_filename
 
-USE_VLLM = True
 
 if USE_VLLM:
     from transformers import AutoTokenizer
@@ -350,12 +349,15 @@ def benchmark_model(model_name: str, save_results: bool = True) -> dict:
     else:
         data = prepare_benchmark_response(model_name, save_results)
 
+    id_list_todo = [nwr.id for nwr in nwrs]
     id_list = []
     responses = []
     summaries = []
     news_list = []
 
     for k, dat in data.items():
+        if k not in id_list_todo:
+            continue
         id_list.append(k)
         responses.append(dat["response"])
         summaries.append(dat["summary"])
