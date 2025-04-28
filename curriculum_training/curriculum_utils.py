@@ -1,14 +1,20 @@
+import contextlib
+import gc
 import json
 from collections.abc import Callable
 from functools import lru_cache
 
+import torch
 from enum import Enum
 
+from .constants import GENARATED_ZH_TW_FILE, USE_VLLM
 from crawler.utils import Logger
-from curriculum_training.constants import GENARATED_ZH_TW_FILE
 from news_with_rationale import NewsWithRationale
 from rationale import Rationale
 from summarized_news import SummarizedNews
+
+if USE_VLLM:
+    from utils_vllm import vllm_cleanup
 
 LoaderFunc = Callable[[NewsWithRationale], tuple[str, str, str]]
 
@@ -127,3 +133,12 @@ def load_curriculum_datasets(
     }
 
     return [loader_fn[difficulty_levels](d) for d in data]
+
+
+def cleanup():
+    if USE_VLLM:
+        vllm_cleanup()
+    with contextlib.suppress(AssertionError):
+        torch.distributed.destroy_process_group()
+    gc.collect()
+    torch.cuda.empty_cache()

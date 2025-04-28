@@ -24,7 +24,7 @@ if USE_GPU:
 training_logger = Logger("training", verbose_level=3)
 training_logger.info("curriculum_training.py started.")
 
-TRAINING = True  # Set to False to skip training
+TRAINING = False  # Set to False to skip training
 
 # model_name = "Qwen/Qwen2.5-0.5B"
 model_path = MODEL_BASE
@@ -49,6 +49,8 @@ if USE_GPU:
 else:
     training_logger.info("Using CPU for training.")
     device = torch.device("cpu")
+
+total_tokens = 0
 
 
 def get_training_args(difficulty_level: DifficultyLevels, train_dataset=None):
@@ -108,11 +110,14 @@ def tokenize_function(sample: Dataset):
 
 def check_to_filter(messages: list[dict]) -> bool:
     """ Check if the input is too long to be processed by the model """
+    global total_tokens
     tokenized_inputs = tokenizer.apply_chat_template(
         messages,
         tokenize=True,
         add_generation_prompt=False
     )
+    if len(tokenized_inputs) <= MAX_INPUT_LENGTH:
+        total_tokens += len(tokenized_inputs)
     return len(tokenized_inputs) > MAX_INPUT_LENGTH
 
 
@@ -227,7 +232,7 @@ def curriculum_training(
 
 
 def curriculum_trianing_main() -> None:
-
+    global total_tokens
     curriculum_texts: list[list[dict]] = []
 
     for difficulty_level in DifficultyLevels:
@@ -242,6 +247,8 @@ def curriculum_trianing_main() -> None:
         training_logger.info(
             f"Difficulty level {difficulty_level.name}: {len(dataset)} samples"
         )
+
+        total_tokens = 0
 
         for i, (sys_prompt, user_prompt, out_str) in enumerate(dataset):
 
@@ -270,6 +277,8 @@ def curriculum_trianing_main() -> None:
 
         training_logger.info(f"After filtering: {len(texts)} samples")
         curriculum_texts.append(texts)
+
+        print(f"Tokens in {difficulty_level.name}: {total_tokens}")
 
     curriculum_datasets: list[Dataset] = [
         Dataset.from_dict({

@@ -1,8 +1,5 @@
-import contextlib
-import gc
 from typing import Any
 
-import torch
 from vllm import LLM, RequestOutput, SamplingParams
 from vllm.distributed import (
     destroy_distributed_environment,
@@ -15,7 +12,7 @@ def init_vllm_model(
 ) -> tuple[LLM, SamplingParams]:
     model = LLM(
         model=model_name,
-        dtype="bfloat16",
+        # dtype="bfloat16",
         max_model_len=max_input_length + max_new_tokens,
         # max_seq_len=max_input_length,
         max_seq_len_to_capture=max_input_length,
@@ -68,10 +65,6 @@ def vllm_batch_generate(
     return outputs
 
 
-def cleanup():
+def vllm_cleanup():
     destroy_model_parallel()
     destroy_distributed_environment()
-    with contextlib.suppress(AssertionError):
-        torch.distributed.destroy_process_group()
-    gc.collect()
-    torch.cuda.empty_cache()
