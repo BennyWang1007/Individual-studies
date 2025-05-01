@@ -12,11 +12,12 @@ from curriculum_training.constants import (
     MAX_NEW_TOKENS,
     MODEL_DISTAL_FROM,
     USE_VLLM,
+    ALLOW_VLLM,
 )
 from news_with_rationale import NewsWithRationale
 from utils import get_news_with_rationale_filename, int_set_str
 
-if USE_VLLM:
+if ALLOW_VLLM:
     from transformers import AutoTokenizer
     from utils_vllm import (
         init_vllm_model,
@@ -196,6 +197,9 @@ def local_data_format_main() -> None:
         output_strs = [response.outputs[0].text for response in responses]
 
     else:
+        # Make sure the model is downloaded
+        logger.info(f"Pulling model {FORMAT_MODEL_OLLAMA}...")
+        ollama.pull(FORMAT_MODEL_OLLAMA)
         desc = "Generating NWRs with Ollama"
         for nwr in tqdm(nwr_list, total=len(nwr_list), desc=desc):
             # Process each NewsWithRationale object
@@ -222,8 +226,4 @@ def local_data_format_main() -> None:
 
 
 if __name__ == "__main__":
-    if not USE_VLLM:
-        # Make sure the model is downloaded
-        logger.info(f"Pulling model {FORMAT_MODEL_OLLAMA}...")
-        ollama.pull(FORMAT_MODEL_OLLAMA)
     local_data_format_main()

@@ -7,13 +7,13 @@ from functools import lru_cache
 import torch
 from enum import Enum
 
-from .constants import GENARATED_ZH_TW_FILE, USE_VLLM
+from .constants import GENARATED_ZH_TW_FILE, USE_VLLM, ALLOW_VLLM
 from crawler.utils import Logger
 from news_with_rationale import NewsWithRationale
 from rationale import Rationale
 from summarized_news import SummarizedNews
 
-if USE_VLLM:
+if ALLOW_VLLM:
     from utils_vllm import vllm_cleanup
 
 LoaderFunc = Callable[[NewsWithRationale], tuple[str, str, str]]
@@ -159,7 +159,7 @@ def load_curriculum_datasets(
 
 
 def cleanup():
-    if USE_VLLM:
+    if ALLOW_VLLM and USE_VLLM:
         vllm_cleanup()
     with contextlib.suppress(AssertionError):
         torch.distributed.destroy_process_group()

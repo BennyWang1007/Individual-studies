@@ -1,5 +1,6 @@
 import json
 import os
+from dataclasses import dataclass
 
 import bert_score
 import re
@@ -8,6 +9,9 @@ from tqdm import tqdm
 
 from curriculum_training.constants import (
     USE_VLLM,
+    ALLOW_VLLM,
+    ALLOW_OLLAMA,
+    InferenceType,
     MAX_BENCHMARK_LENGTH,
     MAX_NEW_TOKENS,
     NWR_BENCHMARK_FILE,
@@ -23,14 +27,15 @@ from news_with_rationale import NewsWithRationale
 from utils import legalize_filename
 
 
-if USE_VLLM:
+if ALLOW_VLLM:
     from transformers import AutoTokenizer
     from utils_vllm import (
         init_vllm_model,
         filter_by_max_length,
         vllm_batch_generate,
     )
-else:
+
+if ALLOW_OLLAMA:
     import ollama
     from ollama import chat
 
@@ -41,20 +46,23 @@ with open(NWR_TRAINING_FILE, "r", encoding="utf-8") as f:
     news_count = sum(1 for _ in f)
 
 
-JUDGE_MODELNAME_OLLAMA = "qwen2.5:32b-instruct-q6_K"
+# JUDGE_MODELNAME_OLLAMA = "qwen2.5:32b-instruct-q6_K"
+JUDGE_MODELNAME_OLLAMA = "qwen2.5:14b-instruct"
 JUDGE_MODELNAME_LLVM = "Qwen/Qwen2.5-32B-Instruct"
 
 JUDGE_MODELNAME = JUDGE_MODELNAME_LLVM if USE_VLLM else JUDGE_MODELNAME_OLLAMA
 
 
 TEST_MODELS = [
-    "Qwen/Qwen2.5-0.5B-Instruct",
-    "Qwen/Qwen2.5-3B-Instruct",
-    "Qwen/Qwen2.5-14B-Instruct",
-    f"./qwen2.5-curriculum-trained_{news_count}news_4stage_A100",
-    f"./qwen2.5-curriculum-trained_{news_count}news_5stage_A100",
+    # "Qwen/Qwen2.5-0.5B-Instruct",
+    # "Qwen/Qwen2.5-3B-Instruct",
+    # "Qwen/Qwen2.5-14B-Instruct",
+    # f"./qwen2.5-curriculum-trained_{news_count}news_4stage_A100",
+    # f"./qwen2.5-curriculum-trained_{news_count}news_5stage_A100",
+    # Rf"Qwen2.5-0.5B-Instruct-curriculum_{news_count}news_4stage_A100",
+    # Rf"Qwen2.5-0.5B-Instruct-curriculum_{news_count}news_5stage_A100",
     # R"Qwen2.5-0.5B-Instruct-curriculum_12903news_4stage_A100_old",
-    # R"Qwen2.5-0.5B-Instruct-curriculum_12903news_5stage_A100_old",
+    R"Qwen2.5-0.5B-Instruct-curriculum_12903news_5stage_A100_old",
     # R"Qwen2.5-0.5B-Instruct-curriculum_12903news_4stage_A100",
     # R"Qwen2.5-0.5B-Instruct-curriculum_12903news_5stage_A100",
 
@@ -68,6 +76,50 @@ TEST_MODELS = [
     # "qwen2.5:14b-instruct",
 ]
 
+DEFAULT_METHOD: InferenceType = "VLLM" if USE_VLLM else "OLLAMA"
+
+
+@dataclass
+class BenchmarkObj:
+    """
+    A queue for benchmarking models.
+    """
+    model_name: str
+    inference_method: InferenceType = DEFAULT_METHOD
+    use_model_judge: bool = True
+    judge_method: InferenceType = DEFAULT_METHOD
+    judge_model: str = "None"
+
+    def __post_init__(self):
+        """
+        Post-initialization to validate and adjust attributes if necessary.
+        """
+        if self.use_model_judge and self.judge_model == "None":
+            if self.judge_method == "VLLM":
+                assert USE_VLLM
+                self.judge_model = JUDGE_MODELNAME_LLVM
+            else:
+                assert ALLOW_OLLAMA
+                self.judge_model = JUDGE_MODELNAME_OLLAMA
+
+
+benchmark_queue: list[BenchmarkObj] = []
+
+for name in TEST_MODELS:
+    if name.startswith("Qwen2.5-0.5B-Instruct-curriculum"):
+        assert USE_VLLM
+        benchmark_queue.append(
+            BenchmarkObj(name, inference_method="VLLM", judge_method="OLLAMA")
+        )
+    elif name.startswith("qwen2.5:"):
+        benchmark_queue.append(
+            BenchmarkObj(name, inference_method="OLLAMA")
+        )
+    else:
+        benchmark_queue.append(
+            BenchmarkObj(name)
+        )
+    print(benchmark_queue[-1])
 
 """ ----------------------- Global news data -------------------------- """
 
@@ -77,7 +129,7 @@ with open(DATASET_NAME, "r", encoding="utf-8") as f:
         data = json.loads(line)
         nwrs.append(NewsWithRationale.from_dict(data))
 
-nwrs = nwrs[:100]  # for demonstration
+nwrs = nwrs[:102]  # for demonstration
 
 """ ----------------------- Global news data end ----------------------- """
 
@@ -95,7 +147,7 @@ def evaluate_with_rouge(predictions, references) -> list[dict]:
 
 def evaluate_with_bertscore(predictions, references) -> dict:
     P, R, F1 = bert_score.score(
-        predictions, references, lang="en", verbose=False
+        predictions, references, lang="zh-hant", verbose=False
     )
     return {"precision": P.tolist(), "recall": R.tolist(), "f1": F1.tolist()}
 
@@ -144,6 +196,7 @@ def judge_summary_1_to_20(
     id_list: list[int], articles: list[str],
     gen_sums: list[str], ground_truths: list[str],
     model_name: str, judge_model: str = JUDGE_MODELNAME,
+    judge_method: str = DEFAULT_METHOD,
     save_result: bool = True, regenerate: bool = False
 ) -> list[int]:
     """
@@ -167,11 +220,15 @@ def judge_summary_1_to_20(
 
     id_todo = [id for id in id_list if id not in judge_history.keys()]
 
+    if len(id_todo) == 0:
+        eval_logger.info("No data to generate.")
+        return []
+
     articles = [news for (id, news) in zip(id_list, articles) if id in id_todo]
     gen_sums = [summ for (id, summ) in zip(id_list, gen_sums) if id in id_todo]
     gts = [gt for (id, gt) in zip(id_list, ground_truths) if id in id_todo]
 
-    if USE_VLLM:
+    if judge_method == "VLLM":
         tokenizer = AutoTokenizer.from_pretrained(judge_model)
         prompts = [
             tokenizer.apply_chat_template(
@@ -189,11 +246,14 @@ def judge_summary_1_to_20(
             )
             for article, gen_sum, gt in zip(articles, gen_sums, gts)
         ]
-        llm, sampling_params = init_vllm_model(
-            judge_model, MAX_BENCHMARK_LENGTH, MAX_NEW_TOKENS
-        )
         prompts, articles, gen_sums, gts, id_todo = filter_by_max_length(
             MAX_BENCHMARK_LENGTH, prompts, articles, gen_sums, gts, id_todo
+        )
+        if len(prompts) == 0:
+            eval_logger.info("No data to generate.")
+            return []
+        llm, sampling_params = init_vllm_model(
+            judge_model, MAX_BENCHMARK_LENGTH, MAX_NEW_TOKENS
         )
         responses = vllm_batch_generate(llm, prompts, sampling_params)
         outputs = [response.outputs[0].text for response in responses]
@@ -247,8 +307,10 @@ def judge_summary_1_to_20(
 
 
 def prepare_benchmark_response(
-    model_name: str, saving: bool = True, regenerate: bool = False
+    benchmark_obj: BenchmarkObj, saving: bool = True, regenerate: bool = False
 ) -> dict[int, dict[str, str]]:
+
+    model_name = benchmark_obj.model_name
 
     save_name = legalize_filename(model_name)
     filepath = f"benchmark_result/{save_name}_responses.json"
@@ -263,9 +325,6 @@ def prepare_benchmark_response(
     else:
         histories = {}
 
-    news_list = [nwr.article for nwr in nwrs]
-    summaries = [nwr.summary for nwr in nwrs]
-
     _nwrs: list[NewsWithRationale] = nwrs.copy()  # local nwrs to process
     finished_id = []
 
@@ -274,9 +333,11 @@ def prepare_benchmark_response(
     # eval_logger.info(f"{finished_id:}")
 
     _nwrs = [nwr for nwr in _nwrs if nwr.id not in finished_id]
+    news_list = [nwr.article for nwr in _nwrs]
+    summaries = [nwr.summary for nwr in _nwrs]
     sys_prompt = PREFIX_OF_DIFFICULTY_LEVELS[DL.DIRECT_SUMMARY]
 
-    if USE_VLLM:
+    if benchmark_obj.inference_method == "VLLM":
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         prompts = [
             tokenizer.apply_chat_template(
@@ -309,7 +370,7 @@ def prepare_benchmark_response(
         ollama.pull(model_name)
         responses = []
         # Process each NewsWithRationale object
-        for nwr in tqdm(nwrs, desc="Generating responses", total=len(nwrs)):
+        for nwr in tqdm(_nwrs, desc="Generating responses", total=len(_nwrs)):
             if nwr.id in finished_id:
                 continue
             gen_response = chat(
@@ -336,7 +397,11 @@ def prepare_benchmark_response(
     return histories
 
 
-def benchmark_model(model_name: str, save_results: bool = True) -> dict:
+def benchmark_model(
+    benchmark_obj: BenchmarkObj, save_results: bool = True
+) -> dict:
+
+    model_name = benchmark_obj.model_name
 
     response_file = legalize_filename(model_name)
     filepath = f"benchmark_result/{response_file}_responses.json"
@@ -347,7 +412,7 @@ def benchmark_model(model_name: str, save_results: bool = True) -> dict:
             data_raw: dict[str, dict[str, str]] = json.load(f)
             data = {int(k): v for k, v in data_raw.items()}
     else:
-        data = prepare_benchmark_response(model_name, save_results)
+        data = prepare_benchmark_response(benchmark_obj, save_results)
 
     id_list_todo = [nwr.id for nwr in nwrs]
     id_list = []
@@ -377,16 +442,20 @@ def benchmark_model(model_name: str, save_results: bool = True) -> dict:
     """ ------------------------- Evaluations ------------------------- """
     rouge_scores = evaluate_with_rouge(processed_responses, summaries)
     bert_scores = evaluate_with_bertscore(processed_responses, summaries)
-    judge_scores = judge_summary_1_to_20(
-        id_list=id_list,
-        articles=news_list,
-        gen_sums=processed_responses,
-        ground_truths=summaries,
-        model_name=model_name,
-        judge_model=JUDGE_MODELNAME,
-        save_result=save_results,
-        regenerate=False,
-    )
+    if benchmark_obj.use_model_judge:
+        judge_scores = judge_summary_1_to_20(
+            id_list=id_list,
+            articles=news_list,
+            gen_sums=processed_responses,
+            ground_truths=summaries,
+            model_name=model_name,
+            judge_method=benchmark_obj.judge_method,
+            judge_model=benchmark_obj.judge_model,
+            save_result=save_results,
+            regenerate=False,
+        )
+    else:
+        judge_scores = []
     judge_scores = [score for score in judge_scores if score > 0]
 
     results = {
@@ -446,15 +515,15 @@ if __name__ == "__main__":
     # create a directory to save the results
     os.makedirs("benchmark_result", exist_ok=True)
 
-    for model_name in TEST_MODELS:
-        eval_logger.info(f"Generating responses: {model_name}")
-        prepare_benchmark_response(model_name, saving=True)
+    for benchmark_obj in benchmark_queue:
+        eval_logger.info(f"Generating responses: {benchmark_obj.model_name}")
+        prepare_benchmark_response(benchmark_obj, saving=True)
         # prepare_benchmark_response(model_name, saving=True, regenerate=True)
         cleanup()
 
     cleanup()
 
-    for model_name in TEST_MODELS:
-        eval_logger.info(f"Evaluating model: {model_name}")
-        benchmark_model(model_name, save_results=True)
+    for benchmark_obj in benchmark_queue:
+        eval_logger.info(f"Evaluating model: {benchmark_obj.model_name}")
+        benchmark_model(benchmark_obj, save_results=True)
         cleanup()

@@ -9,7 +9,8 @@ from crawler.utils import Logger
 from curriculum_training.gen_zh_tw_response import gen_zh_tw_response
 from curriculum_training.gen_zh_tw_response_vllm import gen_zh_tw_response_vllm
 from curriculum_training.constants import (
-    MODEL_BASE, MODEL_DISTAL_FROM, USE_VLLM, MAX_INPUT_LENGTH, MAX_NEW_TOKENS
+    MODEL_BASE, MODEL_DISTAL_FROM, USE_VLLM, ALLOW_VLLM,
+    MAX_INPUT_LENGTH, MAX_NEW_TOKENS,
 )
 from parse_generated_data import parse_response, load_response
 from utils import (
@@ -22,7 +23,7 @@ from utils import (
     # int_set_str,
 )
 
-if USE_VLLM:
+if ALLOW_VLLM:
     from utils_vllm import (
         init_vllm_model,
         filter_by_max_length,

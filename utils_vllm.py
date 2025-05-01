@@ -12,7 +12,7 @@ def init_vllm_model(
 ) -> tuple[LLM, SamplingParams]:
     model = LLM(
         model=model_name,
-        # dtype="bfloat16",
+        dtype="bfloat16",
         max_model_len=max_input_length + max_new_tokens,
         # max_seq_len=max_input_length,
         max_seq_len_to_capture=max_input_length,

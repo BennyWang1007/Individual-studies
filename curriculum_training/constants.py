@@ -1,3 +1,5 @@
+from typing import Literal
+
 from utils import (
     get_response_filename,
     get_news_with_rationale_filename,
@@ -5,7 +7,12 @@ from utils import (
     get_zh_tw_filename,
 )
 
-USE_VLLM = True
+ALLOW_VLLM = True
+ALLOW_OLLAMA = True
+
+USE_VLLM = True and ALLOW_VLLM
+
+InferenceType = Literal["OLLAMA", "VLLM"]
 
 MODEL_BASE = "Qwen/Qwen2.5-0.5B-Instruct"
 MODEL_BASE_OLLAMA = "qwen2.5:0.5b-instruct"
