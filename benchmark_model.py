@@ -3,9 +3,11 @@ import os
 from dataclasses import dataclass
 
 import bert_score
+import jinja2
 import re
 from rouge_score import rouge_scorer
 from tqdm import tqdm
+
 
 from curriculum_training.constants import (
     USE_VLLM,
@@ -53,7 +55,7 @@ JUDGE_MODELNAME_LLVM = "Qwen/Qwen2.5-32B-Instruct"
 JUDGE_MODELNAME = JUDGE_MODELNAME_LLVM if USE_VLLM else JUDGE_MODELNAME_OLLAMA
 
 
-TEST_MODELS = [
+TEST_MODELS: list[str] = [
     # "Qwen/Qwen2.5-0.5B-Instruct",
     # "Qwen/Qwen2.5-3B-Instruct",
     # "Qwen/Qwen2.5-14B-Instruct",
@@ -62,9 +64,13 @@ TEST_MODELS = [
     # Rf"Qwen2.5-0.5B-Instruct-curriculum_{news_count}news_4stage_A100",
     # Rf"Qwen2.5-0.5B-Instruct-curriculum_{news_count}news_5stage_A100",
     # R"Qwen2.5-0.5B-Instruct-curriculum_12903news_4stage_A100_old",
-    R"Qwen2.5-0.5B-Instruct-curriculum_12903news_5stage_A100_old",
+    # R"Qwen2.5-0.5B-Instruct-curriculum_12903news_5stage_A100_old",
     # R"Qwen2.5-0.5B-Instruct-curriculum_12903news_4stage_A100",
     # R"Qwen2.5-0.5B-Instruct-curriculum_12903news_5stage_A100",
+    # R"Qwen2.5-0.5B-Instruct-curriculum_5000news_4stage_A100",
+    # R"Qwen2.5-0.5B-Instruct-curriculum_500news_4stage_A100",
+    # R"Qwen2.5-0.5B-Instruct-curriculum_50news_4stage_A100",
+    # R"Qwen2.5-0.5B-Instruct-curriculum_0news_4stage_A100",
 
     # R"qwen2.5-curriculum-trained_3184news_4stage_A100",
     # R"qwen2.5-curriculum-trained_3184news_5stage_A100",
@@ -74,6 +80,11 @@ TEST_MODELS = [
     # "qwen2.5:3b-instruct",
     # "qwen2.5:7b-instruct",
     # "qwen2.5:14b-instruct",
+
+    # Gemma models
+    # "google/gemma-2-2b-it",
+    # "google/gemma-3-1b-it",
+    # "google/gemma-3-4b-it",
 ]
 
 DEFAULT_METHOD: InferenceType = "VLLM" if USE_VLLM else "OLLAMA"
@@ -109,7 +120,7 @@ for name in TEST_MODELS:
     if name.startswith("Qwen2.5-0.5B-Instruct-curriculum"):
         assert USE_VLLM
         benchmark_queue.append(
-            BenchmarkObj(name, inference_method="VLLM", judge_method="OLLAMA")
+            BenchmarkObj(name, inference_method="VLLM")
         )
     elif name.startswith("qwen2.5:"):
         benchmark_queue.append(
@@ -121,7 +132,7 @@ for name in TEST_MODELS:
         )
     print(benchmark_queue[-1])
 
-""" ----------------------- Global news data -------------------------- """
+""" ----------------------- Global data -------------------------- """
 
 nwrs: list[NewsWithRationale] = []
 with open(DATASET_NAME, "r", encoding="utf-8") as f:
@@ -131,7 +142,12 @@ with open(DATASET_NAME, "r", encoding="utf-8") as f:
 
 nwrs = nwrs[:102]  # for demonstration
 
-""" ----------------------- Global news data end ----------------------- """
+llm = None
+sampling_params = None
+tokenizer = None
+prev_judge_model = None
+
+""" ----------------------- Global data end ----------------------- """
 
 eval_logger = Logger("eval score", verbose_level=3)
 eval_logger.info(f"Total news count: {news_count}")
@@ -152,12 +168,12 @@ def evaluate_with_bertscore(predictions, references) -> dict:
     return {"precision": P.tolist(), "recall": R.tolist(), "f1": F1.tolist()}
 
 
-def judge_summary_1_to_20_prompt_sys() -> str:
+def judge_summary_0_to_20_prompt_sys_eng() -> str:
     return """\
 You are an expert language evaluator. Your task is to assess the quality of a \
 model-generated summary based on the article and the ground-truth summary. \
-Score it from 1 to 20 using the following rubric:
-0: Unreadable format.
+Score it from 0 to 20 using the following rubric:
+0: Unreadable format or gibberish.
 1: Totally irrelevant, unrelated to the article.
 2: Hallucinates facts, makes no sense.
 3: Severe misunderstanding, contains major errors.
@@ -179,12 +195,41 @@ Score it from 1 to 20 using the following rubric:
 19: Near perfect, minor stylistic polish could be added.
 20: Perfect — clear, faithful, complete, and elegant.
 
-Return only an integer score (1–20), followed by a short reason \
+Return only an integer score (0–20), followed by a short reason \
 (e.g., "Score: 17 — Very close to ideal summary, only minor flaws").
 """
 
 
-def judge_summary_1_to_20_prompt_user(article, response, ground_truth) -> str:
+def judge_summary_0_to_20_prompt_sys() -> str:
+    return """\
+你是一位語言評估專家。你的任務是根據文章與標準摘要，評估模型生成的摘要品質。
+請根據以下評分標準，從 0 到 20 為其打分：
+0：格式不正確或無意義的文字。
+1：完全無關，與文章毫不相干。
+2：虛構內容，語意不明。
+3：嚴重誤解，包含重大錯誤。
+4：幾乎無法反映原文，非常不完整。
+5：文法錯誤，缺乏連貫性與相關性。
+6：內容不完整且部分離題。
+7：遺漏關鍵要點，有輕微虛構。
+8：摘要過於模糊，缺乏具體性。
+9：簡潔，涵蓋大部分重點。
+10：可理解但可能遺漏細節。
+11：忠實但略有遺漏。
+12：大致正確但稍顯冗餘。
+13：準確、結構良好，但有輕微風格問題。
+14：涵蓋完整、清晰，語氣尚可改進。
+15：清楚、忠實且具風格。
+16：簡潔優雅，涵蓋所有重點。
+17：非常接近理想摘要，僅有些微瑕疵。
+18：優秀的摘要，易讀且內容完整。
+19：幾近完美，僅可做細微風格潤飾。
+20：完美——清楚、忠實、完整且優雅。
+請回傳"分數："加一個整數分數（0–20），接著是一句簡短的理由（例如：「分數：17 —— 非常接近理想摘要，僅有些微瑕疵」）。
+"""
+
+
+def judge_summary_0_to_20_prompt_user_eng(article, response, ground_truth):
     return (
         f"Article: {article}\n\n"
         f"Ground Truth: {ground_truth}\n\n"
@@ -192,18 +237,67 @@ def judge_summary_1_to_20_prompt_user(article, response, ground_truth) -> str:
     )
 
 
-def judge_summary_1_to_20(
+def judge_summary_0_to_20_prompt_user(article, response, ground_truth) -> str:
+    return (
+        f"文章：\n{article}\n\n"
+        f"標準摘要：\n{ground_truth}\n\n"
+        f"模型生成摘要：\n{response}"
+    )
+
+
+def extract_scores_from_responses(
+    id_list: list[int], gen_sums: list[str], judge_history: dict[int, str],
+    gen_responses: dict[int, str], filepath: str = "", saving: bool = True,
+) -> list[int]:
+    # Extract the scores from the output
+    scores = []
+    for (id, gen_sum) in zip(id_list, gen_sums):
+        score = -1
+        if id in judge_history.keys():
+            output = judge_history[id]
+        elif id in gen_responses.keys():
+            output = gen_responses[id]
+        else:
+            continue
+
+        # match = re.search(r"^\s*(Score:)?\s*(\d+)\s*—?(.*)", output)
+        match = re.search(r"^\s*(分數：)?\s*(\d+)\s*—?(.*)", output)
+        if match:
+            try:
+                score = int(match.group(2))
+                judge_history[id] = output
+            except ValueError:
+                eval_logger.error(f"Invalid score format: {output}")
+        else:
+            eval_logger.error(f"Invalid output format: {output}")
+
+        # set no output as 0
+        if gen_sum == "":
+            score = 0
+
+        scores.append(score)
+
+    if saving:
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(judge_history, f, indent=4, ensure_ascii=False)
+
+    return scores
+
+
+def judge_summary_0_to_20(
     id_list: list[int], articles: list[str],
     gen_sums: list[str], ground_truths: list[str],
     model_name: str, judge_model: str = JUDGE_MODELNAME,
     judge_method: str = DEFAULT_METHOD,
-    save_result: bool = True, regenerate: bool = False
+    saving: bool = True, regenerate: bool = False
 ) -> list[int]:
     """
     Get the responses string from the judge model.
     """
-    assert len(articles) == len(gen_sums) == len(ground_truths)
-    sys_prompt = judge_summary_1_to_20_prompt_sys()
+    global llm, sampling_params, tokenizer, prev_judge_model
+
+    assert len(articles) == len(gen_sums) == len(ground_truths) == len(id_list)
+    sys_prompt = judge_summary_0_to_20_prompt_sys()
 
     save_name = legalize_filename(model_name)
     judge_name = legalize_filename(judge_model)
@@ -222,21 +316,34 @@ def judge_summary_1_to_20(
 
     if len(id_todo) == 0:
         eval_logger.info("No data to generate.")
-        return []
+        return extract_scores_from_responses(
+            id_list, gen_sums, judge_history, {}, filepath, saving
+        )
 
     articles = [news for (id, news) in zip(id_list, articles) if id in id_todo]
     gen_sums = [summ for (id, summ) in zip(id_list, gen_sums) if id in id_todo]
     gts = [gt for (id, gt) in zip(id_list, ground_truths) if id in id_todo]
+    gen_responses: dict[int, str] = {}
 
     if judge_method == "VLLM":
-        tokenizer = AutoTokenizer.from_pretrained(judge_model)
+        if prev_judge_model != judge_model:
+            if llm is not None:
+                del llm
+            if sampling_params is not None:
+                del sampling_params
+            if tokenizer is not None:
+                del tokenizer
+            cleanup()
+            tokenizer = AutoTokenizer.from_pretrained(judge_model)
+
+        assert tokenizer is not None
         prompts = [
             tokenizer.apply_chat_template(
                 [
                     {"role": "system", "content": sys_prompt},
                     {
                         "role": "user",
-                        "content": judge_summary_1_to_20_prompt_user(
+                        "content": judge_summary_0_to_20_prompt_user(
                             article, gen_sum, gt
                         )
                     }
@@ -251,27 +358,36 @@ def judge_summary_1_to_20(
         )
         if len(prompts) == 0:
             eval_logger.info("No data to generate.")
-            return []
-        llm, sampling_params = init_vllm_model(
-            judge_model, MAX_BENCHMARK_LENGTH, MAX_NEW_TOKENS
-        )
+            return extract_scores_from_responses(
+                id_list, gen_sums, judge_history, {}, filepath, saving
+            )
+        else:
+            eval_logger.info(f"Generating {len(prompts)} judge responses.")
+            eval_logger.info(f"id_todo: {id_todo}")
+
+        if prev_judge_model != judge_model:
+            llm, sampling_params = init_vllm_model(
+                judge_model, MAX_BENCHMARK_LENGTH, MAX_NEW_TOKENS
+            )
+            prev_judge_model = judge_model
+
+        assert llm is not None and sampling_params is not None
         responses = vllm_batch_generate(llm, prompts, sampling_params)
         outputs = [response.outputs[0].text for response in responses]
         for i, id in enumerate(id_todo):
-            judge_history[id] = outputs[i]
-        del llm, tokenizer, sampling_params
+            gen_responses[id] = outputs[i]
         cleanup()
     else:
         ollama.pull(judge_model)
 
-        sys_prompt = judge_summary_1_to_20_prompt_sys()
+        sys_prompt = judge_summary_0_to_20_prompt_sys()
         outputs = []
 
-        for i, (article, summ, gt) in tqdm(
-            enumerate(zip(articles, gen_sums, gts)), total=len(articles)
+        for (id, article, summ, gt) in tqdm(
+            zip(id_todo, articles, gen_sums, gts), total=len(id_todo)
         ):
             # Process each article and summary
-            user_prompt = judge_summary_1_to_20_prompt_user(article, summ, gt)
+            user_prompt = judge_summary_0_to_20_prompt_user(article, summ, gt)
             gen_response = chat(
                 model=judge_model,
                 messages=[
@@ -281,29 +397,12 @@ def judge_summary_1_to_20(
             )
             assert gen_response.message.content is not None
             # outputs.append(gen_response.message.content)
-            judge_history[id_todo[i]] = gen_response.message.content
+            # judge_history[id_todo[i]] = gen_response.message.content
+            gen_responses[id_todo[i]] = gen_response.message.content
 
-    # Extract the scores from the output
-    scores = []
-    for id in id_list:
-        score = -1
-        output = judge_history[id]
-        match = re.search(r"^\s*(Score:)?\s*(\d+)\s*—?(.*)", output)
-        if match:
-            try:
-                score = int(match.group(2))
-                judge_history[id] = output
-            except ValueError:
-                eval_logger.error(f"Invalid score format: {output}")
-        else:
-            eval_logger.error(f"Invalid output format: {output}")
-        scores.append(score)
-
-    if save_result:
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(judge_history, f, indent=4, ensure_ascii=False)
-
-    return scores
+    return extract_scores_from_responses(
+        id_list, gen_sums, judge_history, gen_responses, filepath, saving
+    )
 
 
 def prepare_benchmark_response(
@@ -333,26 +432,50 @@ def prepare_benchmark_response(
     # eval_logger.info(f"{finished_id:}")
 
     _nwrs = [nwr for nwr in _nwrs if nwr.id not in finished_id]
+
+    if len(_nwrs) == 0:
+        eval_logger.info("No data to generate.")
+        return histories
+
     news_list = [nwr.article for nwr in _nwrs]
     summaries = [nwr.summary for nwr in _nwrs]
     sys_prompt = PREFIX_OF_DIFFICULTY_LEVELS[DL.DIRECT_SUMMARY]
 
     if benchmark_obj.inference_method == "VLLM":
         tokenizer = AutoTokenizer.from_pretrained(model_name)
-        prompts = [
-            tokenizer.apply_chat_template(
-                [
-                    {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": "article:\n" + nwr.article}
-                ],
-                tokenize=False,
-                add_generation_prompt=True
-            )
-            for nwr in nwrs if nwr.id not in finished_id
-        ]
+        try:
+            prompts = [
+                tokenizer.apply_chat_template(
+                    [
+                        {"role": "system", "content": sys_prompt},
+                        {"role": "user", "content": "article:\n" + nwr.article}
+                    ],
+                    tokenize=False,
+                    add_generation_prompt=True
+                )
+                for nwr in nwrs if nwr.id not in finished_id
+            ]
+        except jinja2.exceptions.TemplateError as e:
+            eval_logger.error(f"Error in tokenizer: {e}")
+            # retry without system prompt
+            prompts = [
+                tokenizer.apply_chat_template(
+                    [
+                        {"role": "user",
+                         "content": f"{sys_prompt}\n\narticle:\n{nwr.article}"}
+                    ],
+                    tokenize=False,
+                    add_generation_prompt=True
+                )
+                for nwr in nwrs if nwr.id not in finished_id
+            ]
         prompts, news_list, summaries, _nwrs = filter_by_max_length(
             MAX_BENCHMARK_LENGTH, prompts, news_list, summaries, _nwrs
         )
+        if len(prompts) == 0:
+            eval_logger.info("No data to generate.")
+        else:
+            eval_logger.info(f"Generating {len(prompts)} model responses.")
         llm, sampling_params = init_vllm_model(
             model_name, MAX_BENCHMARK_LENGTH, MAX_NEW_TOKENS
         )
@@ -397,9 +520,7 @@ def prepare_benchmark_response(
     return histories
 
 
-def benchmark_model(
-    benchmark_obj: BenchmarkObj, save_results: bool = True
-) -> dict:
+def benchmark_model(benchmark_obj: BenchmarkObj, saving: bool = True) -> dict:
 
     model_name = benchmark_obj.model_name
 
@@ -412,7 +533,7 @@ def benchmark_model(
             data_raw: dict[str, dict[str, str]] = json.load(f)
             data = {int(k): v for k, v in data_raw.items()}
     else:
-        data = prepare_benchmark_response(benchmark_obj, save_results)
+        data = prepare_benchmark_response(benchmark_obj, saving)
 
     id_list_todo = [nwr.id for nwr in nwrs]
     id_list = []
@@ -443,7 +564,7 @@ def benchmark_model(
     rouge_scores = evaluate_with_rouge(processed_responses, summaries)
     bert_scores = evaluate_with_bertscore(processed_responses, summaries)
     if benchmark_obj.use_model_judge:
-        judge_scores = judge_summary_1_to_20(
+        judge_scores = judge_summary_0_to_20(
             id_list=id_list,
             articles=news_list,
             gen_sums=processed_responses,
@@ -451,7 +572,7 @@ def benchmark_model(
             model_name=model_name,
             judge_method=benchmark_obj.judge_method,
             judge_model=benchmark_obj.judge_model,
-            save_result=save_results,
+            saving=saving,
             regenerate=False,
         )
     else:
@@ -475,7 +596,7 @@ def benchmark_model(
     eval_logger.info(f"Rouge scores: {results['avg_rouge_scores']}")
     eval_logger.info(f"Judge scores: {results['avg_judge_scores']}")
 
-    if save_results:
+    if saving:
         response_file = legalize_filename(model_name)
         filepath = f"benchmark_result/{response_file}_results.json"
         with open(filepath, "w", encoding="utf-8") as f:
@@ -525,5 +646,5 @@ if __name__ == "__main__":
 
     for benchmark_obj in benchmark_queue:
         eval_logger.info(f"Evaluating model: {benchmark_obj.model_name}")
-        benchmark_model(benchmark_obj, save_results=True)
+        benchmark_model(benchmark_obj, saving=True)
         cleanup()

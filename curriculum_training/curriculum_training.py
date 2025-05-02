@@ -32,7 +32,7 @@ model_name = model_path.split("/")[-1]
 training_logger.info(f"Fine-tuning model: {model_name}")
 
 tokenizer = AutoTokenizer.from_pretrained(model_path)
-# tokenizer.padding_side = "left"
+tokenizer.padding_side = "left"
 
 LIMIT_NEWS = True
 LIMIT_NEWS_COUNT = 5000
@@ -96,22 +96,37 @@ def get_training_args(difficulty_level: DifficultyLevels, train_dataset=None):
     )
 
 
+# def tokenize_function(sample: Dataset):
+#     tokenized_inputs = tokenizer(
+#         sample["input"],
+#         padding="max_length",
+#         truncation=True,
+#         max_length=MAX_INPUT_LENGTH,
+#         return_tensors="pt",
+#     )
+#     labels = tokenizer(
+#         sample["output"],
+#         padding="max_length",
+#         truncation=True,
+#         max_length=MAX_INPUT_LENGTH,
+#         return_tensors="pt",
+#     )
+#     tokenized_inputs["labels"] = labels["input_ids"]
+#     return tokenized_inputs
+
 def tokenize_function(sample: Dataset):
+    combined_texts = [
+        inp + out for inp, out in zip(sample["input"], sample["output"])
+    ]
+    # print(f"Combined texts: {combined_texts}")
     tokenized_inputs = tokenizer(
-        sample["input"],
+        combined_texts,
         padding="max_length",
         truncation=True,
         max_length=MAX_INPUT_LENGTH,
         return_tensors="pt",
     )
-    labels = tokenizer(
-        sample["output"],
-        padding="max_length",
-        truncation=True,
-        max_length=MAX_INPUT_LENGTH,
-        return_tensors="pt",
-    )
-    tokenized_inputs["labels"] = labels["input_ids"]
+    tokenized_inputs["labels"] = tokenized_inputs["input_ids"].clone()
     return tokenized_inputs
 
 
@@ -370,8 +385,6 @@ def curriculum_trianing_main() -> None:
         DifficultyLevels.DIRECT_SUMMARY,
     ]
     curriculum_training(train_datasets, eval_datasets, stages)
-
-    # free up memory
     torch.cuda.empty_cache()
 
     """ ---------------- Curriculum Training for 4 stages ---------------- """
@@ -382,6 +395,14 @@ def curriculum_trianing_main() -> None:
         DifficultyLevels.DIRECT_SUMMARY,
     ]
     curriculum_training(train_datasets, eval_datasets, stages)
+    torch.cuda.empty_cache()
+
+    """ ---------------- Curriculum Training for 1 stages ---------------- """
+    stages = [
+        DifficultyLevels.DIRECT_SUMMARY,
+    ]
+    curriculum_training(train_datasets, eval_datasets, stages)
+    torch.cuda.empty_cache()
 
     training_logger.log("Training complete!", "SUCCESS", TERM_COLORS.GREEN)
 

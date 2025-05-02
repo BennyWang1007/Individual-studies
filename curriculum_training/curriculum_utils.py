@@ -83,35 +83,13 @@ def load_generated_new_with_rationale(
     return data
 
 
-def load_curriculum_datasets(
-    dataset_name: str,
-    difficulty_levels: DifficultyLevels,
-    finished_ids: set[int] | None = None
+def nwr_to_prompt(
+    nwrs: list[NewsWithRationale], diff_level: DifficultyLevels
 ) -> list[tuple[str, str, str]]:
     """
-    Load datasets with increasing difficulty.
-    Returns a list of datasets with [system, input, output] pairs.
+    Convert a NewsWithRationale object to a prompt string.
     """
-    data: list[NewsWithRationale] = load_generated_new_with_rationale(
-        dataset_name
-    )
-    # print(f"Loaded {len(data)} news with rationale")
-
-    if finished_ids is not None:
-        data = [d for d in data if d.id not in finished_ids]
-    # print(f"Filtered {len(data)} news with rationale")
-
-    sys_str = PREFIX_OF_DIFFICULTY_LEVELS[difficulty_levels]
-
-    if difficulty_levels == DifficultyLevels.TO_ZHT:
-        ret: list[tuple[str, str, str]] = []
-        with open(GENARATED_ZH_TW_FILE, "r", encoding="utf-8") as f:
-            for line in f:
-                dat = json.loads(line)
-                ret.append((
-                    sys_str, f"新聞：\n{dat['news']}", dat['response_zh-tw']
-                ))
-        return ret
+    sys_str = PREFIX_OF_DIFFICULTY_LEVELS[diff_level]
 
     # loader_fn: dict[DifficultyLevels, LoaderFunc] = {
     #     DifficultyLevels.ESSENTIAL_ASPECTS: lambda d: (
@@ -148,14 +126,41 @@ def load_curriculum_datasets(
                 f"核心要素：\n{d.essential_aspects_str()}\n\n"
                 f"三元組：\n{d.triples_str()}"
             ),
-            f"新聞總結：{d.summary}",
+            f"新聞總結：\n{d.summary}",
         ),
         DifficultyLevels.DIRECT_SUMMARY: lambda d: (
-            sys_str, f"新聞：{d.article}", f"新聞總結：{d.summary}",
+            sys_str, f"新聞：\n{d.article}", f"新聞總結：\n{d.summary}",
         ),
     }
+    return [loader_fn[diff_level](nwr) for nwr in nwrs]
 
-    return [loader_fn[difficulty_levels](d) for d in data]
+
+def load_curriculum_datasets(
+    dataset_name: str,
+    difficulty_levels: DifficultyLevels,
+    finished_ids: set[int] | None = None
+) -> list[tuple[str, str, str]]:
+    """
+    Load datasets with increasing difficulty.
+    Returns a list of datasets with [system, input, output] pairs.
+    """
+    data = load_generated_new_with_rationale(dataset_name)
+
+    if finished_ids is not None:
+        data = [d for d in data if d.id not in finished_ids]
+
+    if difficulty_levels == DifficultyLevels.TO_ZHT:
+        ret: list[tuple[str, str, str]] = []
+        sys_str = PREFIX_OF_DIFFICULTY_LEVELS[difficulty_levels]
+        with open(GENARATED_ZH_TW_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                dat = json.loads(line)
+                ret.append((
+                    sys_str, f"新聞：\n{dat['news']}", dat['response_zh-tw']
+                ))
+        return ret
+
+    return nwr_to_prompt(data, difficulty_levels)
 
 
 def cleanup():
