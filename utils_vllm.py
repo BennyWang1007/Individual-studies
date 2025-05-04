@@ -18,7 +18,7 @@ def init_vllm_model(
         max_seq_len_to_capture=max_input_length,
         # enforce_eager=True,
         task="generate",
-        gpu_memory_utilization=0.8,
+        gpu_memory_utilization=0.9,
     )
     sampling_params = SamplingParams(
         temperature=0.7,

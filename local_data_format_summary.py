@@ -9,6 +9,9 @@ from crawler.utils import Logger
 from curriculum_training.constants import (
     FORMATTED_NWR_FILE,
     FORMATTED_NWR_FILE2,
+    BETTER_FORMATTED_NWR_FILE,
+    BETTER_NWR_FILE,
+    BETTER_FORMATTED_NWR_FILE2,
     MAX_INPUT_LENGTH,
     MAX_NEW_TOKENS,
     USE_VLLM,
@@ -26,12 +29,16 @@ if ALLOW_VLLM:
         vllm_batch_generate,
     )
 
-FORMAT_MODEL = "Qwen/Qwen2.5-14B-Instruct"
+FORMAT_MODEL = "Qwen/Qwen2.5-32B-Instruct"
 # FORMAT_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
-FORMAT_MODEL_OLLAMA = "qwen2.5:14b-instruct"
+FORMAT_MODEL_OLLAMA = "qwen2.5:32b-instruct"
 
 FILE_TO_FORMAT = FORMATTED_NWR_FILE  # Input file
 FORMATTED_FILE = FORMATTED_NWR_FILE2  # Output file
+
+FILE_TO_FORMAT2 = BETTER_FORMATTED_NWR_FILE
+FILE_TO_FORMAT2 = BETTER_NWR_FILE
+FORMATTED_FILE2 = BETTER_FORMATTED_NWR_FILE2
 
 logger = Logger("data_format")
 cc = OpenCC("s2twp")  # Simplified Chinese to Traditional Chinese
@@ -47,9 +54,9 @@ def get_format_system_prompt() -> str:
         "不良好：摘要出現重複、雜亂的訊息、有未完成的句子，或是總結本身不完整，請輸出\"不符合\"。\n"
         "範例：\n"
         "新聞：\n"
-        "新聞內容...\n"
+        "新聞內容...\n\n"
         "摘要：\n"
-        "摘要內容：...\n"
+        "摘要內容：...\n\n"
         "輸出：\n"
         "符合\n"
     )
@@ -62,13 +69,13 @@ def get_format_user_prompt(nwr: NewsWithRationale) -> str:
     return (
         "請評估以下內容的總結是否是良好的新聞摘要：\n"
         "新聞：\n"
-        f"{nwr.article}\n"
+        f"{nwr.article}\n\n"
         "摘要：\n"
-        f"{nwr.summary}\n"
+        f"{nwr.summary}\n\n"
     )
 
 
-def process_nwr(nwr: NewsWithRationale) -> str:
+def process_nwr_ollama(nwr: NewsWithRationale) -> str:
     """
     Process the given NewsWithRationale object and return the formatted string.
     """
@@ -88,18 +95,18 @@ def process_nwr(nwr: NewsWithRationale) -> str:
     return gen_response.message.content
 
 
-def get_finished_id() -> set[int]:
+def get_finished_id(format_file: str) -> set[int]:
     """
     Get the finished news/NWR/zh-tw ids from the generated files.
     """
     finished_ids = set()
     try:
-        with open(FORMATTED_FILE, "r", encoding="utf-8") as f:
+        with open(format_file, "r", encoding="utf-8") as f:
             for line in f:
                 data = json.loads(line)
                 finished_ids.add(data["id"])
     except FileNotFoundError:
-        logger.info(f"{FORMATTED_FILE} not found, starting from scratch.")
+        logger.info(f"{format_file} not found, starting from scratch.")
         pass
 
     return finished_ids
@@ -124,31 +131,27 @@ def read_nwr_file(filename: str, finished_ids) -> list[NewsWithRationale]:
 
 
 def extract_acceptance(response: str) -> bool:
-    response = cc.convert(response)
-
     if response.startswith("符合"):
         return True
     elif response.startswith("不符合"):
         return False
-    elif "不" in response:
-        logger.warning(f"Non-standard response: {response}")
-        return False
+    elif "符合" in response and "不符合" not in response:
+        return True
     else:
         logger.error(f"Invalid response format: {response}")
         return False
 
 
-def local_data_format_summary_main() -> None:
-    """
-    Main function to format the data using the model.
-    """
+def local_data_format_summary_main(file_to_format, file_to_save) -> None:
+    """ Main function to format the data using the model. """
+
     # Load the finished ids from the formatted file
-    finished_ids = get_finished_id()
+    finished_ids = get_finished_id(file_to_save)
     logger.info(f"Finished ids count: {len(finished_ids)}")
     logger.info(f"Finished ids: {int_set_str(finished_ids)}")
 
     # Load the NewsWithRationale excluding the finished ids
-    nwr_list = read_nwr_file(FILE_TO_FORMAT, finished_ids)
+    nwr_list = read_nwr_file(file_to_format, finished_ids)
     # nwr_list = nwr_list[:10]  # for demonstration
 
     logger.info(f"Total NWR to process: {len(nwr_list)}")
@@ -156,7 +159,6 @@ def local_data_format_summary_main() -> None:
     ids = [nwr.id for nwr in nwr_list if nwr.id not in finished_ids]
     assert len(ids) == len(nwr_list)
 
-    logger.info(f"Remains {len(ids)} NWR to process")
     logger.info(f"Remains NWR ids: {int_set_str(set(ids))}")
 
     output_strs: list[str] = []
@@ -193,7 +195,7 @@ def local_data_format_summary_main() -> None:
         desc = "Generating NWRs with Ollama"
         for nwr in tqdm(nwr_list, total=len(nwr_list), desc=desc):
             # Process each NewsWithRationale object
-            formatted_response = process_nwr(nwr)
+            formatted_response = process_nwr_ollama(nwr)
             output_strs.append(formatted_response)
 
     accepted_nwrs = []
@@ -202,10 +204,11 @@ def local_data_format_summary_main() -> None:
             accepted_nwrs.append(nwr)
 
     logger.info(f"Accepted NWRs count: {len(accepted_nwrs)}")
-    with open(FORMATTED_FILE, "w", encoding="utf-8") as f:
+    with open(file_to_save, "w", encoding="utf-8") as f:
         for nwr in accepted_nwrs:
             f.write(json.dumps(nwr.to_dict(), ensure_ascii=False) + "\n")
 
 
-if __name__ == "__main__":  
-    local_data_format_summary_main()
+if __name__ == "__main__":
+    # local_data_format_summary_main(FILE_TO_FORMAT, FORMATTED_FILE)
+    local_data_format_summary_main(FILE_TO_FORMAT2, FORMATTED_FILE2)
