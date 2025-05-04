@@ -3,9 +3,12 @@ import os
 from dataclasses import dataclass
 
 import bert_score
+import jieba
 import jinja2
 import re
+from opencc import OpenCC
 from rouge_score import rouge_scorer
+from rouge_chinese import Rouge as RougeChinese
 from tqdm import tqdm
 
 
@@ -56,21 +59,26 @@ JUDGE_MODELNAME = JUDGE_MODELNAME_LLVM if USE_VLLM else JUDGE_MODELNAME_OLLAMA
 
 
 TEST_MODELS: list[str] = [
-    # "Qwen/Qwen2.5-0.5B-Instruct",
-    # "Qwen/Qwen2.5-3B-Instruct",
-    # "Qwen/Qwen2.5-14B-Instruct",
+    "Qwen/Qwen2.5-0.5B-Instruct",
+    "Qwen/Qwen2.5-3B-Instruct",
+    "Qwen/Qwen2.5-14B-Instruct",
     # f"./qwen2.5-curriculum-trained_{news_count}news_4stage_A100",
     # f"./qwen2.5-curriculum-trained_{news_count}news_5stage_A100",
     # Rf"Qwen2.5-0.5B-Instruct-curriculum_{news_count}news_4stage_A100",
     # Rf"Qwen2.5-0.5B-Instruct-curriculum_{news_count}news_5stage_A100",
     # R"Qwen2.5-0.5B-Instruct-curriculum_12903news_4stage_A100_old",
     # R"Qwen2.5-0.5B-Instruct-curriculum_12903news_5stage_A100_old",
-    # R"Qwen2.5-0.5B-Instruct-curriculum_12903news_4stage_A100",
+    R"Qwen2.5-0.5B-Instruct-curriculum_12903news_4stage_A100",
     # R"Qwen2.5-0.5B-Instruct-curriculum_12903news_5stage_A100",
-    # R"Qwen2.5-0.5B-Instruct-curriculum_5000news_4stage_A100",
+    R"Qwen2.5-0.5B-Instruct-curriculum_11011news_4stage_A100_better",
+    R"Qwen2.5-0.5B-Instruct-curriculum_11011news_1stage_A100_better",
+    R"Qwen2.5-0.5B-Instruct-curriculum_5000news_4stage_A100",
     # R"Qwen2.5-0.5B-Instruct-curriculum_500news_4stage_A100",
     # R"Qwen2.5-0.5B-Instruct-curriculum_50news_4stage_A100",
     # R"Qwen2.5-0.5B-Instruct-curriculum_0news_4stage_A100",
+
+    R"Qwen2.5-1.5B-Instruct-curriculum_11011news_4stage_A100_better",
+    R"Qwen2.5-1.5B-Instruct-curriculum_11011news_1stage_A100_better",
 
     # R"qwen2.5-curriculum-trained_3184news_4stage_A100",
     # R"qwen2.5-curriculum-trained_3184news_5stage_A100",
@@ -82,9 +90,11 @@ TEST_MODELS: list[str] = [
     # "qwen2.5:14b-instruct",
 
     # Gemma models
-    # "google/gemma-2-2b-it",
-    # "google/gemma-3-1b-it",
-    # "google/gemma-3-4b-it",
+    "google/gemma-2-2b-it",
+    "google/gemma-3-1b-it",
+    "google/gemma-3-4b-it",
+
+    "Qwen/Qwen2.5-32B-Instruct",
 ]
 
 DEFAULT_METHOD: InferenceType = "VLLM" if USE_VLLM else "OLLAMA"
@@ -119,18 +129,12 @@ benchmark_queue: list[BenchmarkObj] = []
 for name in TEST_MODELS:
     if name.startswith("Qwen2.5-0.5B-Instruct-curriculum"):
         assert USE_VLLM
-        benchmark_queue.append(
-            BenchmarkObj(name, inference_method="VLLM")
-        )
+        benchmark_queue.append(BenchmarkObj(name, inference_method="VLLM"))
     elif name.startswith("qwen2.5:"):
-        benchmark_queue.append(
-            BenchmarkObj(name, inference_method="OLLAMA")
-        )
+        benchmark_queue.append(BenchmarkObj(name, inference_method="OLLAMA"))
     else:
-        benchmark_queue.append(
-            BenchmarkObj(name)
-        )
-    print(benchmark_queue[-1])
+        benchmark_queue.append(BenchmarkObj(name))
+    # print(benchmark_queue[-1])
 
 """ ----------------------- Global data -------------------------- """
 
@@ -140,12 +144,15 @@ with open(DATASET_NAME, "r", encoding="utf-8") as f:
         data = json.loads(line)
         nwrs.append(NewsWithRationale.from_dict(data))
 
-nwrs = nwrs[:102]  # for demonstration
+# nwrs = nwrs[:100]  # for demonstration
 
 llm = None
 sampling_params = None
 tokenizer = None
 prev_judge_model = None
+
+rouge_c = RougeChinese()
+cc = OpenCC("s2tw")  # Simplified Chinese to Traditional Chinese
 
 """ ----------------------- Global data end ----------------------- """
 
@@ -161,10 +168,42 @@ def evaluate_with_rouge(predictions, references) -> list[dict]:
     return scores
 
 
-def evaluate_with_bertscore(predictions, references) -> dict:
-    P, R, F1 = bert_score.score(
-        predictions, references, lang="zh-hant", verbose=False
-    )
+def evaluate_with_rouge_chinese(preds: list[str], refs: list[str]) -> dict:
+    preds = [" ".join(jieba.cut(pred)) for pred in preds]
+    refs = [" ".join(jieba.cut(ref)) for ref in refs]
+
+    scores = []
+    for pred, ref in zip(preds, refs):
+        if len(pred) == 0 or len(ref) == 0:
+            scores.append(
+                {
+                    "rouge-1": {"f": 0, "p": 0, "r": 0},
+                    "rouge-l": {"f": 0, "p": 0, "r": 0},
+                    "rouge-2": {"f": 0, "p": 0, "r": 0},
+                }
+            )
+            continue
+        score = rouge_c.get_scores(pred, ref)
+        scores.append(score[0])
+
+    dict_scores = {
+        "rouge1_f": [score["rouge-1"]["f"] for score in scores],
+        "rouge1_p": [score["rouge-1"]["p"] for score in scores],
+        "rouge1_r": [score["rouge-1"]["r"] for score in scores],
+        "rougeL_f": [score["rouge-l"]["f"] for score in scores],
+        "rougeL_p": [score["rouge-l"]["p"] for score in scores],
+        "rougeL_r": [score["rouge-l"]["r"] for score in scores],
+        "rouge2_f": [score["rouge-2"]["f"] for score in scores],
+        "rouge2_p": [score["rouge-2"]["p"] for score in scores],
+        "rouge2_r": [score["rouge-2"]["r"] for score in scores],
+    }
+
+    # scores = rouge.get_scores(predictions, references, avg=True)
+    return dict_scores
+
+
+def evaluate_with_bertscore(preds, refs) -> dict:
+    P, R, F1 = bert_score.score(preds, refs, lang="zh-hant", verbose=False)
     return {"precision": P.tolist(), "recall": R.tolist(), "f1": F1.tolist()}
 
 
@@ -249,7 +288,9 @@ def extract_scores_from_responses(
     id_list: list[int], gen_sums: list[str], judge_history: dict[int, str],
     gen_responses: dict[int, str], filepath: str = "", saving: bool = True,
 ) -> list[int]:
-    # Extract the scores from the output
+    """ Extract the scores from the outputs and history. """
+    assert len(id_list) == len(gen_sums)
+
     scores = []
     for (id, gen_sum) in zip(id_list, gen_sums):
         score = -1
@@ -261,7 +302,8 @@ def extract_scores_from_responses(
             continue
 
         # match = re.search(r"^\s*(Score:)?\s*(\d+)\s*—?(.*)", output)
-        match = re.search(r"^\s*(分數：)?\s*(\d+)\s*—?(.*)", output)
+        # match = re.search(r"^\s*(分數：)?\s*(\d+)\s*—?(.*)", output)
+        match = re.search(r".*(分數：)?\s*(\d+)\s*—?.*", output)
         if match:
             try:
                 score = int(match.group(2))
@@ -295,8 +337,8 @@ def judge_summary_0_to_20(
     Get the responses string from the judge model.
     """
     global llm, sampling_params, tokenizer, prev_judge_model
-
     assert len(articles) == len(gen_sums) == len(ground_truths) == len(id_list)
+
     sys_prompt = judge_summary_0_to_20_prompt_sys()
 
     save_name = legalize_filename(model_name)
@@ -321,7 +363,7 @@ def judge_summary_0_to_20(
         )
 
     articles = [news for (id, news) in zip(id_list, articles) if id in id_todo]
-    gen_sums = [summ for (id, summ) in zip(id_list, gen_sums) if id in id_todo]
+    _sums = [summ for (id, summ) in zip(id_list, gen_sums) if id in id_todo]
     gts = [gt for (id, gt) in zip(id_list, ground_truths) if id in id_todo]
     gen_responses: dict[int, str] = {}
 
@@ -351,10 +393,10 @@ def judge_summary_0_to_20(
                 tokenize=False,
                 add_generation_prompt=True
             )
-            for article, gen_sum, gt in zip(articles, gen_sums, gts)
+            for article, gen_sum, gt in zip(articles, _sums, gts)
         ]
-        prompts, articles, gen_sums, gts, id_todo = filter_by_max_length(
-            MAX_BENCHMARK_LENGTH, prompts, articles, gen_sums, gts, id_todo
+        prompts, articles, _sums, gts, id_todo = filter_by_max_length(
+            MAX_BENCHMARK_LENGTH, prompts, articles, _sums, gts, id_todo
         )
         if len(prompts) == 0:
             eval_logger.info("No data to generate.")
@@ -363,7 +405,7 @@ def judge_summary_0_to_20(
             )
         else:
             eval_logger.info(f"Generating {len(prompts)} judge responses.")
-            eval_logger.info(f"id_todo: {id_todo}")
+            # eval_logger.info(f"id_todo: {id_todo}")
 
         if prev_judge_model != judge_model:
             llm, sampling_params = init_vllm_model(
@@ -396,8 +438,7 @@ def judge_summary_0_to_20(
                 ]
             )
             assert gen_response.message.content is not None
-            # outputs.append(gen_response.message.content)
-            # judge_history[id_todo[i]] = gen_response.message.content
+            # add the response to the dictionary
             gen_responses[id_todo[i]] = gen_response.message.content
 
     return extract_scores_from_responses(
@@ -452,7 +493,7 @@ def prepare_benchmark_response(
                     ],
                     tokenize=False,
                     add_generation_prompt=True
-                )
+                ) + "新聞摘要：\n"
                 for nwr in nwrs if nwr.id not in finished_id
             ]
         except jinja2.exceptions.TemplateError as e:
@@ -466,7 +507,7 @@ def prepare_benchmark_response(
                     ],
                     tokenize=False,
                     add_generation_prompt=True
-                )
+                ) + "新聞摘要：\n"
                 for nwr in nwrs if nwr.id not in finished_id
             ]
         prompts, news_list, summaries, _nwrs = filter_by_max_length(
@@ -474,13 +515,16 @@ def prepare_benchmark_response(
         )
         if len(prompts) == 0:
             eval_logger.info("No data to generate.")
+            return histories
         else:
             eval_logger.info(f"Generating {len(prompts)} model responses.")
+
         llm, sampling_params = init_vllm_model(
             model_name, MAX_BENCHMARK_LENGTH, MAX_NEW_TOKENS
         )
         responses_raw = vllm_batch_generate(llm, prompts, sampling_params)
         responses = [response.outputs[0].text for response in responses_raw]
+        responses = [cc.convert(response).strip() for response in responses]
         for (nwr, response) in zip(_nwrs, responses):
             histories[nwr.id] = {
                 "news": nwr.article,
@@ -491,7 +535,6 @@ def prepare_benchmark_response(
         cleanup()
     else:
         ollama.pull(model_name)
-        responses = []
         # Process each NewsWithRationale object
         for nwr in tqdm(_nwrs, desc="Generating responses", total=len(_nwrs)):
             if nwr.id in finished_id:
@@ -509,9 +552,6 @@ def prepare_benchmark_response(
                 "summary": nwr.summary,
                 "response": gen_response.message.content,
             }
-            # responses.append(gen_response.message.content)
-
-    # responses = [histories[nwr.id]["response"] for nwr in nwrs]
 
     if saving:
         with open(filepath, "w", encoding="utf-8") as f:
@@ -561,8 +601,10 @@ def benchmark_model(benchmark_obj: BenchmarkObj, saving: bool = True) -> dict:
         processed_responses.append(processed_response)
 
     """ ------------------------- Evaluations ------------------------- """
-    rouge_scores = evaluate_with_rouge(processed_responses, summaries)
+    # rouge_scores = evaluate_with_rouge(processed_responses, summaries)
+    rouge_scores = evaluate_with_rouge_chinese(processed_responses, summaries)
     bert_scores = evaluate_with_bertscore(processed_responses, summaries)
+
     if benchmark_obj.use_model_judge:
         judge_scores = judge_summary_0_to_20(
             id_list=id_list,
@@ -584,7 +626,8 @@ def benchmark_model(benchmark_obj: BenchmarkObj, saving: bool = True) -> dict:
         "num_samples": len(nwrs),
         "judge_model": JUDGE_MODELNAME,
         "avg_bert_scores": avg_bert_scores(bert_scores),
-        "avg_rouge_scores": avg_rouge_scores(rouge_scores),
+        # "avg_rouge_scores": avg_rouge_scores(rouge_scores),
+        "avg_rouge_scores": avg_rouge_scores_chinese(rouge_scores),
         "avg_judge_scores": avg_judge_scores(judge_scores),
         "bert_scores": bert_scores,
         "rouge_scores": rouge_scores,
@@ -611,6 +654,13 @@ def avg_rouge_scores(rouge_scores):
         avg_scores[score] = 0 if len(rouge_scores) == 0 else sum(
             [rouge_score[score].fmeasure for rouge_score in rouge_scores]
         ) / len(rouge_scores)
+    return avg_scores
+
+
+def avg_rouge_scores_chinese(rouge_scores: dict[str, list]) -> dict:
+    avg_scores = {}
+    for k, v in rouge_scores.items():
+        avg_scores[k] = 0 if len(v) == 0 else sum(v) / len(v)
     return avg_scores
 
 
