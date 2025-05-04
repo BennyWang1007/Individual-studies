@@ -20,7 +20,7 @@ MODEL_DISTAL_FROM = "qwen2.5:32b-instruct-q6_K"
 
 MAX_INPUT_LENGTH = 4096
 MAX_BENCHMARK_LENGTH = 2048
-MAX_TRAINING_INPUT_LENGTH = 1536
+MAX_TRAINING_INPUT_LENGTH = 2048
 MAX_NEW_TOKENS = 1024
 
 GENARATED_RESPONSE_FILE = get_response_filename(MODEL_DISTAL_FROM)
@@ -32,5 +32,12 @@ FORMATTED_NWR_FILE = "formatted_nwr.jsonl"
 FORMATTED_NWR_FILE2 = "formatted_nwr2.jsonl"
 NWR_TRAINING_FILE = "formatted_nwr_training.jsonl"
 NWR_BENCHMARK_FILE = "formatted_nwr_benchmark.jsonl"
+
+BETTER_DIR = "better_training_data"
+BETTER_NWR_FILE = f"{BETTER_DIR}/news_with_rationale.jsonl"
+BETTER_FORMATTED_NWR_FILE = f"{BETTER_DIR}/formatted_nwr_better.jsonl"
+BETTER_FORMATTED_NWR_FILE2 = f"{BETTER_DIR}/formatted_nwr_better2.jsonl"
+BETTER_NWR_TRAINING_FILE = f"{BETTER_DIR}/formatted_nwr_training.jsonl"
+BETTER_NWR_BENCHMARK_FILE = f"{BETTER_DIR}/formatted_nwr_benchmark.jsonl"
 
 BENCHMARK_PERCENTAGE = 0.2
