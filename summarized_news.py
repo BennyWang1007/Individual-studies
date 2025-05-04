@@ -1,22 +1,21 @@
 import json
 import os
+from dataclasses import dataclass, field
 
 from constants import DIR_STORED_DATA
 from crawler.utils import Logger
 
 
+@dataclass
 class SummarizedNews:
 
     SAVE_PATH = os.path.join(DIR_STORED_DATA, 'processed_data.jsonl')
     logger = Logger("SummarizedNews")
 
-    def __init__(
-        self, article: str, summary: str, id: int, label: list[int], **kwargs
-    ) -> None:
-        self.id = id
-        self.label = label
-        self.article = article
-        self.summary = summary
+    article: str
+    summary: str = ""
+    id: int = -1
+    label: list[int] = field(default_factory=list[int])
 
     def __str__(self) -> str:
         return (

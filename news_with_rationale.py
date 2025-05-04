@@ -1,5 +1,6 @@
 import json
 import os
+from dataclasses import dataclass
 
 from constants import DIR_STORED_DATA
 from crawler.utils import Logger
@@ -7,25 +8,11 @@ from rationale import Rationale
 from summarized_news import SummarizedNews
 
 
-class NewsWithRationale(SummarizedNews, Rationale):
+@dataclass
+class NewsWithRationale(Rationale, SummarizedNews):
 
     SAVE_PATH = os.path.join(DIR_STORED_DATA, 'news_with_rationales.jsonl')
     logger = Logger("NewsWithRationale")
-
-    def __init__(self, summarized_news: SummarizedNews, rationale: Rationale):
-        SummarizedNews.__init__(
-            self,
-            summarized_news.article,
-            summarized_news.summary,
-            summarized_news.id,
-            summarized_news.label
-        )
-        Rationale.__init__(
-            self,
-            rationale.essential_aspects,
-            rationale.triples,
-            rationale.rationale_summary
-        )
 
     def __str__(self) -> str:
         return f'{super().__str__()}\n{Rationale.__str__(self)}'
@@ -88,6 +75,12 @@ class NewsWithRationale(SummarizedNews, Rationale):
 
     @classmethod
     def from_dict(cls, data):
-        summarized_news = SummarizedNews.from_dict(data)
-        rationale = Rationale.from_dict(data)
-        return cls(summarized_news, rationale)
+        return cls(
+            article=data.get('article', ''),
+            summary=data.get('summary', ''),
+            id=data.get('id', -1),
+            label=data.get('label', []),
+            essential_aspects=data.get('essential_aspects', []),
+            triples=data.get('triples', []),
+            rationale_summary=data.get('rationale_summary', '')
+        )

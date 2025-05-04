@@ -1,13 +1,11 @@
+from dataclasses import dataclass, field
+
+
+@dataclass
 class Rationale:
-    def __init__(
-        self,
-        essential_aspects: list[str],
-        triples: list[str],
-        summary: str
-    ):
-        self.essential_aspects = essential_aspects
-        self.triples = triples
-        self.rationale_summary = summary
+    essential_aspects: list[str] = field(default_factory=list[str])
+    triples: list[str] = field(default_factory=list[str])
+    rationale_summary: str = ""
 
     def __str__(self) -> str:
         return (
