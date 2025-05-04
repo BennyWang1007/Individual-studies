@@ -23,11 +23,9 @@ from utils_vllm import (
 assert ALLOW_VLLM
 assert USE_VLLM
 
-
 MODELNAME = "Qwen/Qwen2.5-32B-Instruct"
 
 gen_logger = Logger("data_gen", verbose_level=3)
-
 
 model, sampling_params = init_vllm_model(
     model_name=MODELNAME,

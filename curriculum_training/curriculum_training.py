@@ -11,7 +11,12 @@ from transformers import (
     TrainingArguments,
 )
 
-from .constants import NWR_TRAINING_FILE, MODEL_BASE, MAX_TRAINING_INPUT_LENGTH
+from .constants import (
+    NWR_TRAINING_FILE,
+    MODEL_BASE,
+    MAX_TRAINING_INPUT_LENGTH,
+    BETTER_NWR_TRAINING_FILE,
+)
 from .curriculum_utils import DifficultyLevels, load_curriculum_datasets
 from crawler.utils import Logger, TERM_COLORS
 
@@ -37,7 +42,10 @@ tokenizer.padding_side = "left"
 LIMIT_NEWS = True
 LIMIT_NEWS_COUNT = 5000
 
+# switch between different datasets
 DATASET_NAME = NWR_TRAINING_FILE
+DATASET_NAME = BETTER_NWR_TRAINING_FILE
+
 # count the number of news in the dataset
 with open(DATASET_NAME, "r", encoding="utf-8") as f:
     news_count = sum(1 for _ in f)
@@ -144,6 +152,11 @@ def check_to_filter(messages: list[dict]) -> bool:
 
 
 def check_batch_shape(dataset):
+    if len(dataset) == 0:
+        training_logger.log(
+            "Batch shape check passed!", "SUCCESS", TERM_COLORS.GREEN
+        )
+        return
     batch = tokenizer(
         [dataset[i]["input"] for i in range(BATCH_SIZE)],
         padding="max_length",
@@ -239,7 +252,9 @@ def curriculum_training(
 
     if TRAINING:
         # save the final model
-        savename = f"./{model_name}-curriculum_{news_count}news_{ls}stage_A100"
+        savename = (
+            f"./{model_name}-curriculum_{news_count}news_{ls}stage_A100_better"
+        )
         model.save_pretrained(savename)
         tokenizer.save_pretrained(savename)
         training_logger.info(f"Model saved to {savename}")
@@ -257,8 +272,11 @@ def curriculum_trianing_main() -> None:
     global total_tokens
     curriculum_texts: list[list[dict]] = []
 
-    for difficulty_level in DifficultyLevels:
-        dataset = load_curriculum_datasets(DATASET_NAME, difficulty_level)
+    for diff_level in DifficultyLevels:
+        # if diff_level == DifficultyLevels.TO_ZHT:
+        #     curriculum_texts.append([])
+        #     continue
+        dataset = load_curriculum_datasets(DATASET_NAME, diff_level)
         random.seed(42)
         random.shuffle(dataset)
         # for demo purpose
@@ -267,7 +285,7 @@ def curriculum_trianing_main() -> None:
         texts: list[dict] = []  # a list contains the input and output texts
 
         training_logger.info(
-            f"Difficulty level {difficulty_level.name}: {len(dataset)} samples"
+            f"Difficulty level {diff_level.name}: {len(dataset)} samples"
         )
 
         total_tokens = 0
@@ -306,7 +324,7 @@ def curriculum_trianing_main() -> None:
         training_logger.info(f"After filtering: {len(texts)} samples")
         curriculum_texts.append(texts)
 
-        print(f"Tokens in {difficulty_level.name}: {total_tokens}")
+        training_logger.info(f"Tokens in {diff_level.name}: {total_tokens}")
 
     curriculum_datasets: list[Dataset] = [
         Dataset.from_dict({
@@ -342,10 +360,10 @@ def curriculum_trianing_main() -> None:
         assert len(train_datasets[i]) % BATCH_SIZE == 0
         assert len(eval_datasets[i]) % BATCH_SIZE == 0
 
-    assert isinstance(train_datasets[0], Dataset)
-    assert isinstance(train_datasets[0][0], dict)
-    assert isinstance(train_datasets[0][0]["input"], str)
-    assert isinstance(train_datasets[0][0]["output"], str)
+    assert isinstance(train_datasets[1], Dataset)
+    assert isinstance(train_datasets[1][0], dict)
+    assert isinstance(train_datasets[1][0]["input"], str)
+    assert isinstance(train_datasets[1][0]["output"], str)
 
     # tokenize the datasets
     for i in range(len(train_datasets)):
@@ -360,11 +378,11 @@ def curriculum_trianing_main() -> None:
         eval_datasets[i] = tokenized_eval_dataset
 
     # check the shape of the datasets
-    for difficulty_level, (train_dataset, eval_dataset) in enumerate(
+    for diff_level, (train_dataset, eval_dataset) in enumerate(
         zip(train_datasets, eval_datasets)
     ):
         training_logger.info(
-            f"Difficulty level {DifficultyLevels(difficulty_level).name:<18}: "
+            f"Difficulty level {DifficultyLevels(diff_level).name:<18}: "
             f"{len(train_dataset)} training samples, "
             f"{len(eval_dataset)} evaluation samples"
         )
@@ -376,14 +394,8 @@ def curriculum_trianing_main() -> None:
     training_logger.info(f"Total training   samples: {total_train_samples}")
     training_logger.info(f"Total evaluation samples: {total_eval_samples}")
 
-    """ ---------------- Curriculum Training for 5 stages ---------------- """
-    stages = [
-        DifficultyLevels.TO_ZHT,
-        DifficultyLevels.ESSENTIAL_ASPECTS,
-        DifficultyLevels.TRIPLES,
-        DifficultyLevels.SUMMARY,
-        DifficultyLevels.DIRECT_SUMMARY,
-    ]
+    """ ---------------- Curriculum Training for 1 stages ---------------- """
+    stages = [DifficultyLevels.DIRECT_SUMMARY]
     curriculum_training(train_datasets, eval_datasets, stages)
     torch.cuda.empty_cache()
 
@@ -397,8 +409,12 @@ def curriculum_trianing_main() -> None:
     curriculum_training(train_datasets, eval_datasets, stages)
     torch.cuda.empty_cache()
 
-    """ ---------------- Curriculum Training for 1 stages ---------------- """
+    """ --------------- Curriculum Training for 5 stages --------------- """
     stages = [
+        DifficultyLevels.TO_ZHT,
+        DifficultyLevels.ESSENTIAL_ASPECTS,
+        DifficultyLevels.TRIPLES,
+        DifficultyLevels.SUMMARY,
         DifficultyLevels.DIRECT_SUMMARY,
     ]
     curriculum_training(train_datasets, eval_datasets, stages)

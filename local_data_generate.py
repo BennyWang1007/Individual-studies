@@ -30,17 +30,8 @@ if ALLOW_VLLM:
         vllm_batch_generate,
     )
 
-# MODELNAME = "deepseek-r1:14b"  # 60~80 sec
-# MODELNAME = "deepseek-r1:7b"  # 9.3 sec
-# MODELNAME = "qwen:7b"         # 2.46 sec
-# MODELNAME = "qwen:14b"        # 14.36 sec
-# MODELNAME = "qwen:32b"        # 25.77 sec
-# MODELNAME = "qwen2.5:32b"     # 26.7 sec
-# MODELNAME = "qwen2.5:72b"     # TLE
-MODELNAME_OLLAMA = "qwen2.5:32b-instruct-q6_K"  # 94.55 sec
-# MODELNAME = "qwen2.5:32b-instruct-q8_0" # mem-full, 42.73 sec
+MODELNAME_OLLAMA = "qwen2.5:32b-instruct-q6_K"
 MODELNAME_VLLM = "Qwen/Qwen2.5-32B-Instruct"
-
 
 gen_logger = Logger("data_gen", verbose_level=3)
 
