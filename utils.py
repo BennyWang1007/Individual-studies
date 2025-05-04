@@ -242,3 +242,53 @@ def get_formatted_nwr_filename(model_name: str) -> str:
 def get_zh_tw_filename(model_name: str) -> str:
     """ Get the zh_tw filename """
     return legalize_filename(f"generated_zh-tw_responses_{model_name}.jsonl")
+
+
+def hook_stdout():
+    """ Hook stdout to a file """
+    import sys
+    import atexit
+
+    log_file_out = open("./stdout_log.txt", "a", encoding="utf-8")
+    log_file_err = open("./stderr_log.txt", "a", encoding="utf-8")
+
+    class Tee:
+        def __init__(self, *streams):
+            self.streams = streams
+
+        def write(self, data):
+            for s in self.streams:
+                try:
+                    s.write(data)
+                    s.flush()  # immediate write
+                except Exception:
+                    pass
+
+        def flush(self):
+            for s in self.streams:
+                try:
+                    s.flush()
+                except Exception:
+                    pass
+
+    def cleanup_logfile():
+        try:
+            log_file_out.flush()
+            log_file_out.close()
+        except Exception:
+            pass
+        try:
+            log_file_err.flush()
+            log_file_err.close()
+        except Exception:
+            pass
+
+    atexit.register(cleanup_logfile)
+    sys.stdout = Tee(sys.__stdout__, log_file_out)
+    sys.stderr = Tee(sys.__stderr__, log_file_err)
+
+    print("stdout and stderr are hooked to files: "
+          "stdout_log.txt and stderr_log.txt.")
+
+
+hook_stdout()
