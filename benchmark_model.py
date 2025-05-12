@@ -1,16 +1,17 @@
+import argparse
 import json
 import os
+import re
 from dataclasses import dataclass
 
 import bert_score
+import evaluate
 import jieba
 import jinja2
-import re
 from opencc import OpenCC
 from rouge_score import rouge_scorer
 from rouge_chinese import Rouge as RougeChinese
 from tqdm import tqdm
-
 
 from curriculum_training.constants import (
     USE_VLLM,
@@ -21,6 +22,8 @@ from curriculum_training.constants import (
     MAX_NEW_TOKENS,
     NWR_BENCHMARK_FILE,
     NWR_TRAINING_FILE,
+    NWR_BENCHMARK_V2,
+    NWR_BENCHMARK_V3,
 )
 from curriculum_training.curriculum_utils import (
     DifficultyLevels as DL,
@@ -31,6 +34,7 @@ from crawler.utils import Logger
 from news_with_rationale import NewsWithRationale
 from utils import legalize_filename
 
+os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
 
 if ALLOW_VLLM:
     from transformers import AutoTokenizer
@@ -45,6 +49,10 @@ if ALLOW_OLLAMA:
     from ollama import chat
 
 DATASET_NAME = NWR_BENCHMARK_FILE
+DATASET_NAME = NWR_BENCHMARK_V2
+DATASET_NAME = NWR_BENCHMARK_V3
+
+BENCHMARK_DIR = "benchmark_result"
 
 # count the number of news in the dataset
 with open(NWR_TRAINING_FILE, "r", encoding="utf-8") as f:
@@ -62,6 +70,7 @@ TEST_MODELS: list[str] = [
     "Qwen/Qwen2.5-0.5B-Instruct",
     "Qwen/Qwen2.5-3B-Instruct",
     "Qwen/Qwen2.5-14B-Instruct",
+
     # f"./qwen2.5-curriculum-trained_{news_count}news_4stage_A100",
     # f"./qwen2.5-curriculum-trained_{news_count}news_5stage_A100",
     # Rf"Qwen2.5-0.5B-Instruct-curriculum_{news_count}news_4stage_A100",
@@ -69,16 +78,28 @@ TEST_MODELS: list[str] = [
     # R"Qwen2.5-0.5B-Instruct-curriculum_12903news_4stage_A100_old",
     # R"Qwen2.5-0.5B-Instruct-curriculum_12903news_5stage_A100_old",
     R"Qwen2.5-0.5B-Instruct-curriculum_12903news_4stage_A100",
-    # R"Qwen2.5-0.5B-Instruct-curriculum_12903news_5stage_A100",
-    R"Qwen2.5-0.5B-Instruct-curriculum_11011news_4stage_A100_better",
-    R"Qwen2.5-0.5B-Instruct-curriculum_11011news_1stage_A100_better",
-    R"Qwen2.5-0.5B-Instruct-curriculum_5000news_4stage_A100",
-    # R"Qwen2.5-0.5B-Instruct-curriculum_500news_4stage_A100",
-    # R"Qwen2.5-0.5B-Instruct-curriculum_50news_4stage_A100",
-    # R"Qwen2.5-0.5B-Instruct-curriculum_0news_4stage_A100",
+    R"Qwen2.5-0.5B-Instruct-curriculum_12903news_5stage_A100",
 
-    R"Qwen2.5-1.5B-Instruct-curriculum_11011news_4stage_A100_better",
+    R"Qwen2.5-0.5B-Instruct-curriculum_11011news_1stage_A100_better",
+    R"Qwen2.5-0.5B-Instruct-curriculum_11011news_4stage_A100_better",
+
     R"Qwen2.5-1.5B-Instruct-curriculum_11011news_1stage_A100_better",
+    R"Qwen2.5-1.5B-Instruct-curriculum_11011news_4stage_A100_better",
+
+    R"Qwen2.5-0.5B-Instruct-curriculum_11114news_1stage_A100_better2",
+    R"Qwen2.5-0.5B-Instruct-curriculum_11114news_4stage_A100_better2",
+    R"Qwen2.5-0.5B-Instruct-curriculum_11114news_5stage_A100_better2",
+
+    # R"Qwen2.5-0.5B-Instruct-curriculum_11114news_4stage_A100_better-lr_adjusted",
+    # R"Qwen2.5-0.5B-Instruct-curriculum_11114news_1stage_A100_better-lr_adjusted_lora_merged",
+    # R"Qwen2.5-0.5B-Instruct-curriculum_11114news_4stage_A100_better-lr_adjusted_lora_merged",
+    # R"Qwen2.5-0.5B-Instruct-curriculum_11114news_5stage_A100_better-lr_adjusted_lora_merged",
+
+    R"Qwen2.5-0.5B-Instruct-cl_12952news_1stg_v2-lr_adj",
+    R"Qwen2.5-0.5B-Instruct-cl_12952news_4stg_v2-lr_adj",
+
+    R"Qwen2.5-1.5B-Instruct-cl_12952news_1stg_v2-lr_adj",
+    R"Qwen2.5-1.5B-Instruct-cl_12952news_4stg_v2-lr_adj",
 
     # R"qwen2.5-curriculum-trained_3184news_4stage_A100",
     # R"qwen2.5-curriculum-trained_3184news_5stage_A100",
@@ -136,6 +157,14 @@ for name in TEST_MODELS:
         benchmark_queue.append(BenchmarkObj(name))
     # print(benchmark_queue[-1])
 
+
+# test existing models
+match_template = R"^Qwen2.5-[01].5B-Instruct-c"
+for name in TEST_MODELS:
+    if re.match(match_template, name):
+        assert os.path.exists(name), f"Model {name} not found."
+        print(f"Model {name} found.")
+
 """ ----------------------- Global data -------------------------- """
 
 nwrs: list[NewsWithRationale] = []
@@ -144,7 +173,7 @@ with open(DATASET_NAME, "r", encoding="utf-8") as f:
         data = json.loads(line)
         nwrs.append(NewsWithRationale.from_dict(data))
 
-# nwrs = nwrs[:100]  # for demonstration
+# nwrs = nwrs[:1000]  # for demonstration
 
 llm = None
 sampling_params = None
@@ -152,6 +181,7 @@ tokenizer = None
 prev_judge_model = None
 
 rouge_c = RougeChinese()
+rouge_eval = evaluate.load("rouge")
 cc = OpenCC("s2tw")  # Simplified Chinese to Traditional Chinese
 
 """ ----------------------- Global data end ----------------------- """
@@ -186,7 +216,7 @@ def evaluate_with_rouge_chinese(preds: list[str], refs: list[str]) -> dict:
         score = rouge_c.get_scores(pred, ref)
         scores.append(score[0])
 
-    dict_scores = {
+    scores_dict = {
         "rouge1_f": [score["rouge-1"]["f"] for score in scores],
         "rouge1_p": [score["rouge-1"]["p"] for score in scores],
         "rouge1_r": [score["rouge-1"]["r"] for score in scores],
@@ -198,8 +228,19 @@ def evaluate_with_rouge_chinese(preds: list[str], refs: list[str]) -> dict:
         "rouge2_r": [score["rouge-2"]["r"] for score in scores],
     }
 
-    # scores = rouge.get_scores(predictions, references, avg=True)
-    return dict_scores
+    return scores_dict
+
+
+def evaluate_with_rouge_eval(preds: list[str], refs: list[str]) -> dict:
+    preds = [cc.convert(pred).strip() for pred in preds]
+    # preds = [" ".join(jieba.cut(pred)) for pred in preds]
+    # refs = [" ".join(jieba.cut(ref)) for ref in refs]
+    return rouge_eval.compute(
+        predictions=preds,
+        references=refs,
+        use_stemmer=True,
+        rouge_types=["rouge1", "rougeL", "rougeLsum", "rouge2"]
+    )
 
 
 def evaluate_with_bertscore(preds, refs) -> dict:
@@ -303,10 +344,10 @@ def extract_scores_from_responses(
 
         # match = re.search(r"^\s*(Score:)?\s*(\d+)\s*—?(.*)", output)
         # match = re.search(r"^\s*(分數：)?\s*(\d+)\s*—?(.*)", output)
-        match = re.search(r".*(分數：)?\s*(\d+)\s*—?.*", output)
+        match = re.search(r".*分數：\s*(\d+)\s*—?.*", output)
         if match:
             try:
-                score = int(match.group(2))
+                score = int(match.group(1))
                 judge_history[id] = output
             except ValueError:
                 eval_logger.error(f"Invalid score format: {output}")
@@ -341,9 +382,12 @@ def judge_summary_0_to_20(
 
     sys_prompt = judge_summary_0_to_20_prompt_sys()
 
-    save_name = legalize_filename(model_name)
+    save_dir = os.path.join(BENCHMARK_DIR, legalize_filename(model_name))
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
     judge_name = legalize_filename(judge_model)
-    filepath = f"benchmark_result/{save_name}_judged_by_{judge_name}.json"
+    filepath = os.path.join(save_dir, f"judged_by_{judge_name}.json")
 
     judge_history: dict[int, str] = {}
 
@@ -446,14 +490,46 @@ def judge_summary_0_to_20(
     )
 
 
-def prepare_benchmark_response(
+def get_response_filepath(model_name: str, check: bool = False) -> str:
+    """
+    Get the response file path for the model.
+    """
+    save_dir = os.path.join(BENCHMARK_DIR, legalize_filename(model_name))
+    if check and not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    return os.path.join(save_dir, "responses.json")
+
+
+def get_result_filepath(model_name: str, check: bool = False) -> str:
+    """
+    Get the result file path for the model.
+    """
+    save_dir = os.path.join(BENCHMARK_DIR, legalize_filename(model_name))
+    if check and not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    return os.path.join(save_dir, "results.json")
+
+
+def get_judge_filepath(
+    model_name: str, judge_model_name: str, check: bool = False
+) -> str:
+    """
+    Get the judge file path for the model.
+    """
+    save_dir = os.path.join(BENCHMARK_DIR, legalize_filename(model_name))
+    if check and not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    judge_name = legalize_filename(judge_model_name)
+    return os.path.join(save_dir, f"judged_by_{judge_name}.json")
+
+
+def gen_benchmark_response(
     benchmark_obj: BenchmarkObj, saving: bool = True, regenerate: bool = False
 ) -> dict[int, dict[str, str]]:
 
     model_name = benchmark_obj.model_name
 
-    save_name = legalize_filename(model_name)
-    filepath = f"benchmark_result/{save_name}_responses.json"
+    filepath = get_response_filepath(model_name, check=True)
 
     if os.path.exists(filepath):
         with open(filepath, "r", encoding="utf-8") as f:
@@ -547,10 +623,11 @@ def prepare_benchmark_response(
                 ]
             )
             assert gen_response.message.content is not None
+            response = cc.convert(gen_response.message.content).strip()
             histories[nwr.id] = {
                 "news": nwr.article,
                 "summary": nwr.summary,
-                "response": gen_response.message.content,
+                "response": response,
             }
 
     if saving:
@@ -564,8 +641,7 @@ def benchmark_model(benchmark_obj: BenchmarkObj, saving: bool = True) -> dict:
 
     model_name = benchmark_obj.model_name
 
-    response_file = legalize_filename(model_name)
-    filepath = f"benchmark_result/{response_file}_responses.json"
+    filepath = get_response_filepath(model_name)
     data: dict[int, dict[str, str]]
 
     if os.path.exists(filepath):
@@ -573,7 +649,7 @@ def benchmark_model(benchmark_obj: BenchmarkObj, saving: bool = True) -> dict:
             data_raw: dict[str, dict[str, str]] = json.load(f)
             data = {int(k): v for k, v in data_raw.items()}
     else:
-        data = prepare_benchmark_response(benchmark_obj, saving)
+        data = gen_benchmark_response(benchmark_obj, saving)
 
     id_list_todo = [nwr.id for nwr in nwrs]
     id_list = []
@@ -593,16 +669,19 @@ def benchmark_model(benchmark_obj: BenchmarkObj, saving: bool = True) -> dict:
     for response in responses:
         processed_response = response.strip()
         if processed_response.startswith("新聞摘要：\n"):
-            processed_response = processed_response[5:]
+            processed_response = processed_response[6:]
         elif processed_response.startswith("新聞摘要："):
-            processed_response = processed_response[4:]
+            processed_response = processed_response[5:]
         elif processed_response.startswith("新聞摘要"):
-            processed_response = processed_response[3:]
+            processed_response = processed_response[4:]
         processed_responses.append(processed_response)
 
     """ ------------------------- Evaluations ------------------------- """
     # rouge_scores = evaluate_with_rouge(processed_responses, summaries)
     rouge_scores = evaluate_with_rouge_chinese(processed_responses, summaries)
+    # rouge_scores = evaluate_with_rouge_eval(processed_responses, summaries)
+    # print(rouge_scores)
+    # exit()
     bert_scores = evaluate_with_bertscore(processed_responses, summaries)
 
     if benchmark_obj.use_model_judge:
@@ -640,8 +719,7 @@ def benchmark_model(benchmark_obj: BenchmarkObj, saving: bool = True) -> dict:
     eval_logger.info(f"Judge scores: {results['avg_judge_scores']}")
 
     if saving:
-        response_file = legalize_filename(model_name)
-        filepath = f"benchmark_result/{response_file}_results.json"
+        filepath = get_result_filepath(model_name, check=True)
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(results, f, indent=4, ensure_ascii=False)
 
@@ -685,11 +763,49 @@ def avg_judge_scores(judge_scores):
 if __name__ == "__main__":
     # create a directory to save the results
     os.makedirs("benchmark_result", exist_ok=True)
+    # mp.set_start_method("spawn", force=True)
+
+    parser = argparse.ArgumentParser(description="Benchmark Model Script")
+    parser.add_argument("--limit_news", "-n", type=int,
+                        help="Limit the size of benchmark data", default=None)
+    parser.add_argument("--dataset_name", "-d", type=str,
+                        help="Dataset name", default=None)
+    parser.add_argument("--model_name", "-m", type=str,
+                        help="Model name", default=None)
+    parser.add_argument("--judge_model", "-j", type=str,
+                        help="Judge model name", default=None)
+    parser.add_argument("--regenerate", "-r", action="store_true",
+                        help="Regenerate the responses", default=None)
+    parser.add_argument("--no_regenerate", "-nr", action="store_true",
+                        help="Do not regenerate the responses", default=None)
+    parser.add_argument("--save", "-s", action="store_true",
+                        help="Save the results", default=None)
+
+    regen = False
+    save = True
+    args = parser.parse_args()
+    if args.limit_news is not None:
+        news_count = args.limit_news
+        nwrs = nwrs[:news_count]
+    if args.dataset_name is not None:
+        DATASET_NAME = args.dataset_name
+    if args.model_name is not None:
+        TEST_MODELS = [args.model_name]
+        benchmark_queue = [BenchmarkObj(args.model_name)]
+    if args.judge_model is not None:
+        JUDGE_MODELNAME = args.judge_model
+        for benchmark_obj in benchmark_queue:
+            benchmark_obj.judge_model = args.judge_model
+    if args.regenerate is not None:
+        regen = args.regenerate
+    if args.no_regenerate is not None:
+        regen = not args.no_regenerate
+    if args.save is not None:
+        save = args.save
 
     for benchmark_obj in benchmark_queue:
         eval_logger.info(f"Generating responses: {benchmark_obj.model_name}")
-        prepare_benchmark_response(benchmark_obj, saving=True)
-        # prepare_benchmark_response(model_name, saving=True, regenerate=True)
+        gen_benchmark_response(benchmark_obj, saving=save, regenerate=regen)
         cleanup()
 
     cleanup()
