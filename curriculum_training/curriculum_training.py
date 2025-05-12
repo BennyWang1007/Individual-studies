@@ -1,71 +1,53 @@
 import os
 import random
 import time
+from dataclasses import field
 
 import torch
 from datasets import Dataset
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
+    PreTrainedTokenizer,
     Trainer,
     TrainingArguments,
 )
 
-from .constants import (
-    NWR_TRAINING_FILE,
-    MODEL_BASE,
-    MAX_TRAINING_INPUT_LENGTH,
-    BETTER_NWR_TRAINING_FILE,
-)
+from .constants import MAX_TRAINING_INPUT_LENGTH
 from .curriculum_utils import DifficultyLevels, load_curriculum_datasets
 from crawler.utils import Logger, TERM_COLORS
 
 USE_GPU = True and torch.cuda.is_available()
+USE_LORA = False
 MAX_INPUT_LENGTH = MAX_TRAINING_INPUT_LENGTH
 
-if USE_GPU:
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Use only first GPU
+if USE_LORA:
+    from peft import get_peft_model, LoraConfig
 
 training_logger = Logger("training", verbose_level=3)
 training_logger.info("curriculum_training.py started.")
 
-TRAINING = True  # Set to False to skip training
-
-# model_name = "Qwen/Qwen2.5-0.5B"
-model_path = MODEL_BASE
-model_name = model_path.split("/")[-1]
-training_logger.info(f"Fine-tuning model: {model_name}")
-
-tokenizer = AutoTokenizer.from_pretrained(model_path)
-tokenizer.padding_side = "left"
-
-LIMIT_NEWS = True
-LIMIT_NEWS_COUNT = 5000
-
-# switch between different datasets
-DATASET_NAME = NWR_TRAINING_FILE
-DATASET_NAME = BETTER_NWR_TRAINING_FILE
-
-# count the number of news in the dataset
-with open(DATASET_NAME, "r", encoding="utf-8") as f:
-    news_count = sum(1 for _ in f)
-
-if LIMIT_NEWS:
-    news_count = min(news_count, LIMIT_NEWS_COUNT)
-
-training_logger.info(f"Total news count: {news_count}")
-
-BATCH_SIZE = 8
-EPOCH = 3
-
 if USE_GPU:
     training_logger.info("Using GPU for training.")
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Use only first GPU
     device = torch.device("cuda:0")
 else:
     training_logger.info("Using CPU for training.")
     device = torch.device("cpu")
 
-total_tokens = 0
+TRAINING = True  # Set to False to skip training
+BATCH_SIZE = 8
+EPOCH = 3
+
+news_count = 0
+total_tokens = {
+    DifficultyLevels.TO_ZHT: 0,
+    DifficultyLevels.ESSENTIAL_ASPECTS: 0,
+    DifficultyLevels.TRIPLES: 0,
+    DifficultyLevels.SUMMARY: 0,
+    DifficultyLevels.DIRECT_SUMMARY: 0,
+}
+tokenizer: PreTrainedTokenizer = None
 
 
 def get_training_args(difficulty_level: DifficultyLevels, train_dataset=None):
@@ -80,7 +62,8 @@ def get_training_args(difficulty_level: DifficultyLevels, train_dataset=None):
         case DifficultyLevels.SUMMARY:
             learning_rate = 1e-5
         case DifficultyLevels.DIRECT_SUMMARY:
-            learning_rate = 1e-5
+            # learning_rate = 1e-5  # v1, 2
+            learning_rate = 5e-5  # v3
         case _:
             raise Exception("Invalid difficulty level")
 
@@ -138,17 +121,19 @@ def tokenize_function(sample: Dataset):
     return tokenized_inputs
 
 
-def check_to_filter(messages: list[dict]) -> bool:
+def check_to_filter(messages: list[dict], df: DifficultyLevels) -> bool:
     """ Check if the input is too long to be processed by the model """
-    global total_tokens
+    # global total_tokens
     tokenized_inputs = tokenizer.apply_chat_template(
         messages,
         tokenize=True,
         add_generation_prompt=False
     )
-    if len(tokenized_inputs) <= MAX_INPUT_LENGTH:
-        total_tokens += len(tokenized_inputs)
-    return len(tokenized_inputs) > MAX_INPUT_LENGTH
+    token_count = len(tokenized_inputs)
+    if token_count <= MAX_INPUT_LENGTH:
+        total_tokens[df] += token_count
+        return False
+    return True
 
 
 def check_batch_shape(dataset):
@@ -202,7 +187,7 @@ def custom_data_collator(features):
 
 
 def curriculum_training(
-    train_datasets, eval_datasets, states: list[DifficultyLevels]
+    model_path, train_datasets, eval_datasets, states: list[DifficultyLevels],
 ):
     """
     Curriculum training for the model
@@ -214,15 +199,32 @@ def curriculum_training(
     """
     start_time = time.time()
     ls = len(states)  # length of the states
+
+    model_name = model_path.split("/")[-1]
+    training_logger.info(f"Fine-tuning model: {model_name} with {ls} stages")
+
     if TRAINING:
         model = AutoModelForCausalLM.from_pretrained(
             model_path,
             torch_dtype=torch.bfloat16,
             device_map="auto",
             attn_implementation="flash_attention_2",
-        ).to(device)
+        )
 
-    # train progressively on harder datasets
+        if USE_LORA:
+            lora_config = LoraConfig(
+                r=16,
+                lora_alpha=32,
+                target_modules=["q_proj", "v_proj"],
+                lora_dropout=0.05,
+                bias="none",
+                task_type="CAUSAL_LM",
+            )
+            model = get_peft_model(model, lora_config)
+            model.print_trainable_parameters()
+        model.to(device)
+
+    # train progressively on harder tasks
     for difficulty_level in states:
         i = difficulty_level.value
         train_dataset, eval_dataset = train_datasets[i], eval_datasets[i]
@@ -253,8 +255,11 @@ def curriculum_training(
     if TRAINING:
         # save the final model
         savename = (
-            f"./{model_name}-curriculum_{news_count}news_{ls}stage_A100_better"
+            f"./{model_name}-cl_{news_count}news_{ls}stg_v2-lr_adj"
         )
+        if USE_LORA:
+            savename += "_lora"
+            model = model.merge_and_unload()  # This merges LoRA weights
         model.save_pretrained(savename)
         tokenizer.save_pretrained(savename)
         training_logger.info(f"Model saved to {savename}")
@@ -268,27 +273,33 @@ def curriculum_training(
     )
 
 
-def curriculum_trianing_main() -> None:
-    global total_tokens
+def preprare_dataset(
+    dataset_name: str,
+    limit_news: int | None = None,
+) -> tuple[list[Dataset], list[Dataset]]:
+    """
+    Prepare the dataset for training
+
+    Args:
+        dataset_name: name of the dataset
+        limit_news: limit the number of news to process
+
+    Returns:
+        tuple of training and evaluation datasets
+    """
+
+    training_logger.debug("Preparing dataset: " + dataset_name)
     curriculum_texts: list[list[dict]] = []
 
-    for diff_level in DifficultyLevels:
-        # if diff_level == DifficultyLevels.TO_ZHT:
-        #     curriculum_texts.append([])
-        #     continue
-        dataset = load_curriculum_datasets(DATASET_NAME, diff_level)
+    for df in DifficultyLevels:
+        dataset = load_curriculum_datasets(dataset_name, df)
+        # dataset = dataset[:80]  # for demo purpose
         random.seed(42)
         random.shuffle(dataset)
-        # for demo purpose
-        # dataset = dataset[:80]
+
+        training_logger.info(f"{len(dataset)} samples in diff level {df.name}")
 
         texts: list[dict] = []  # a list contains the input and output texts
-
-        training_logger.info(
-            f"Difficulty level {diff_level.name}: {len(dataset)} samples"
-        )
-
-        total_tokens = 0
         cur_news_count = 0
 
         for i, (sys_prompt, user_prompt, out_str) in enumerate(dataset):
@@ -299,7 +310,7 @@ def curriculum_trianing_main() -> None:
                 {"role": "assistant", "content": out_str},
             ]
 
-            if check_to_filter(messages):
+            if check_to_filter(messages, df):
                 continue
 
             full_text = tokenizer.apply_chat_template(
@@ -307,6 +318,8 @@ def curriculum_trianing_main() -> None:
                 tokenize=False,
                 add_generation_prompt=False
             )
+
+            assert isinstance(full_text, str)
 
             text = full_text.split("<|im_start|>assistant\n")
             text_in, text_out = text[0] + "<|im_start|>assistant\n", text[1]
@@ -318,13 +331,14 @@ def curriculum_trianing_main() -> None:
 
             cur_news_count += 1
 
-            if LIMIT_NEWS and cur_news_count >= LIMIT_NEWS_COUNT:
+            if limit_news and cur_news_count >= limit_news:
                 break
 
         training_logger.info(f"After filtering: {len(texts)} samples")
         curriculum_texts.append(texts)
 
-        training_logger.info(f"Tokens in {diff_level.name}: {total_tokens}")
+    for df in DifficultyLevels:
+        training_logger.info(f"Tokens in {df.name}: {total_tokens[df]}")
 
     curriculum_datasets: list[Dataset] = [
         Dataset.from_dict({
@@ -333,7 +347,6 @@ def curriculum_trianing_main() -> None:
             "difficulty": [i] * len(dataset)  # Repeats difficulty level
         }) for i, dataset in enumerate(curriculum_texts)
     ]
-    del curriculum_texts
 
     # split the dataset into training and evaluation sets
     split_dataset = [
@@ -365,26 +378,91 @@ def curriculum_trianing_main() -> None:
     assert isinstance(train_datasets[1][0]["input"], str)
     assert isinstance(train_datasets[1][0]["output"], str)
 
-    # tokenize the datasets
-    for i in range(len(train_datasets)):
-        train_dataset, eval_dataset = train_datasets[i], eval_datasets[i]
-        tokenized_train_dataset = train_dataset.map(
-            tokenize_function, batched=True
-        )
-        tokenized_eval_dataset = eval_dataset.map(
-            tokenize_function, batched=True
-        )
-        train_datasets[i] = tokenized_train_dataset
-        eval_datasets[i] = tokenized_eval_dataset
+    return train_datasets, eval_datasets
 
-    # check the shape of the datasets
-    for diff_level, (train_dataset, eval_dataset) in enumerate(
-        zip(train_datasets, eval_datasets)
-    ):
+
+def print_sample_texts(
+    train_datasets: list[Dataset],
+    num: int = 5,
+    difficulty_level: DifficultyLevels = DifficultyLevels.DIRECT_SUMMARY,
+) -> None:
+    """
+    Print sample texts from the training datasets
+
+    Args:
+        train_datasets: list of training datasets
+        num: number of samples to print
+        difficulty_level: difficulty level to print
+    """
+    dataset = train_datasets[difficulty_level.value]
+    for i in range(num):
+        input_text = dataset[i]["input"]
+        output_text = dataset[i]["output"]
+        print(f"Input: {input_text}")
+        print(f"Output: {output_text}")
+        print("-" * 80)
+
+
+def curriculum_trianing_main(
+    model_path: str,
+    dataset_name: str,
+    limit_news: int | None = None,
+    stages_list: list[list[DifficultyLevels]] = field(default_factory=list),
+    to_train: bool = True,
+) -> None:
+    global tokenizer, news_count, BATCH_SIZE, TRAINING
+
+    news_count = 0
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    tokenizer.padding_side = "left"
+    TRAINING = to_train
+
+    if "0.5B" in model_path:
+        BATCH_SIZE = 8
+        training_logger.debug("Training 0.5B model, setting batch size to 8.")
+    elif not USE_LORA and "1.5B" in model_path:
+        BATCH_SIZE = 6
+        training_logger.debug("Training 1.5B model, setting batch size to 4.")
+    elif "3B" in model_path:
+        BATCH_SIZE = 3
+    elif "7B" in model_path:
+        BATCH_SIZE = 2
+
+    with open(dataset_name, "r", encoding="utf-8") as f:
+        news_count = sum(1 for _ in f)
+
+    if limit_news:
+        news_count = min(news_count, limit_news)
+
+    training_logger.info(f"Total news count: {news_count}")
+
+    # load the datasets
+    train_datasets, eval_datasets = preprare_dataset(
+        dataset_name, limit_news=limit_news
+    )
+
+    # print sample texts
+    # for df in DifficultyLevels:
+    #     print_sample_texts(train_datasets, num=3, difficulty_level=df)
+
+    training_logger.info(f"Loaded {len(train_datasets[0])} datasets")
+
+    # tokenize the datasets
+    train_datasets = [
+        dataset.map(tokenize_function, batched=True)
+        for dataset in train_datasets
+    ]
+    eval_datasets = [
+        dataset.map(tokenize_function, batched=True)
+        for dataset in eval_datasets
+    ]
+
+    # log dataset sizes and check batch shapes
+    for diff_level, datasets in enumerate(zip(train_datasets, eval_datasets)):
+        train_dataset, eval_dataset = datasets
         training_logger.info(
             f"Difficulty level {DifficultyLevels(diff_level).name:<18}: "
-            f"{len(train_dataset)} training samples, "
-            f"{len(eval_dataset)} evaluation samples"
+            f"{len(train_dataset)} train, {len(eval_dataset)} eval samples"
         )
         check_batch_shape(train_dataset)
         check_batch_shape(eval_dataset)
@@ -394,34 +472,26 @@ def curriculum_trianing_main() -> None:
     training_logger.info(f"Total training   samples: {total_train_samples}")
     training_logger.info(f"Total evaluation samples: {total_eval_samples}")
 
-    """ ---------------- Curriculum Training for 1 stages ---------------- """
-    stages = [DifficultyLevels.DIRECT_SUMMARY]
-    curriculum_training(train_datasets, eval_datasets, stages)
-    torch.cuda.empty_cache()
-
-    """ ---------------- Curriculum Training for 4 stages ---------------- """
-    stages = [
-        DifficultyLevels.ESSENTIAL_ASPECTS,
-        DifficultyLevels.TRIPLES,
-        DifficultyLevels.SUMMARY,
-        DifficultyLevels.DIRECT_SUMMARY,
-    ]
-    curriculum_training(train_datasets, eval_datasets, stages)
-    torch.cuda.empty_cache()
-
-    """ --------------- Curriculum Training for 5 stages --------------- """
-    stages = [
-        DifficultyLevels.TO_ZHT,
-        DifficultyLevels.ESSENTIAL_ASPECTS,
-        DifficultyLevels.TRIPLES,
-        DifficultyLevels.SUMMARY,
-        DifficultyLevels.DIRECT_SUMMARY,
-    ]
-    curriculum_training(train_datasets, eval_datasets, stages)
-    torch.cuda.empty_cache()
+    # curriculum training
+    for stages in stages_list:
+        curriculum_training(model_path, train_datasets, eval_datasets, stages)
+        torch.cuda.empty_cache()
 
     training_logger.log("Training complete!", "SUCCESS", TERM_COLORS.GREEN)
 
 
+# sample usage
 if __name__ == "__main__":
-    curriculum_trianing_main()
+    curriculum_trianing_main(
+        model_path="Qwen/Qwen2.5-0.5B-Instruct",
+        dataset_name="formatted_nwr_training.jsonl",
+        limit_news=None,
+        stages_list=[
+            # [DifficultyLevels.TO_ZHT],
+            [DifficultyLevels.ESSENTIAL_ASPECTS],
+            [DifficultyLevels.TRIPLES],
+            [DifficultyLevels.SUMMARY],
+            [DifficultyLevels.DIRECT_SUMMARY],
+        ],
+        to_train=True,
+    )
