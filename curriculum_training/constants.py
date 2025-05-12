@@ -33,11 +33,17 @@ FORMATTED_NWR_FILE2 = "formatted_nwr2.jsonl"
 NWR_TRAINING_FILE = "formatted_nwr_training.jsonl"
 NWR_BENCHMARK_FILE = "formatted_nwr_benchmark.jsonl"
 
-BETTER_DIR = "better_training_data"
-BETTER_NWR_FILE = f"{BETTER_DIR}/news_with_rationale.jsonl"
-BETTER_FORMATTED_NWR_FILE = f"{BETTER_DIR}/formatted_nwr_better.jsonl"
-BETTER_FORMATTED_NWR_FILE2 = f"{BETTER_DIR}/formatted_nwr_better2.jsonl"
-BETTER_NWR_TRAINING_FILE = f"{BETTER_DIR}/formatted_nwr_training.jsonl"
-BETTER_NWR_BENCHMARK_FILE = f"{BETTER_DIR}/formatted_nwr_benchmark.jsonl"
+DATASET_V2_DIR = "better_training_data"
+NWR_V2 = f"{DATASET_V2_DIR}/news_with_rationale.jsonl"
+FORMATTED_NWR_FILE_V2 = f"{DATASET_V2_DIR}/formatted_nwr_better.jsonl"
+FORMATTED_NWR_FILE_V2_2 = f"{DATASET_V2_DIR}/formatted_nwr_better2.jsonl"
+NWR_TRAINING_V2 = f"{DATASET_V2_DIR}/formatted_nwr_training.jsonl"
+NWR_BENCHMARK_V2 = f"{DATASET_V2_DIR}/formatted_nwr_benchmark.jsonl"
+
+DATASET_V3_DIR = "better_training_data2"
+NWR_V3 = f"{DATASET_V3_DIR}/news_with_rationale.jsonl"
+FORMATTED_NWR_V3 = f"{DATASET_V3_DIR}/news_with_rationale.jsonl"
+NWR_TRAINING_V3 = f"{DATASET_V3_DIR}/formatted_nwr_training.jsonl"
+NWR_BENCHMARK_V3 = f"{DATASET_V3_DIR}/formatted_nwr_benchmark.jsonl"
 
 BENCHMARK_PERCENTAGE = 0.2

@@ -244,10 +244,18 @@ def get_zh_tw_filename(model_name: str) -> str:
     return legalize_filename(f"generated_zh-tw_responses_{model_name}.jsonl")
 
 
+STDOUT_HOOKED = False
+
+
 def hook_stdout():
     """ Hook stdout to a file """
-    import sys
     import atexit
+    import sys
+
+    global STDOUT_HOOKED
+    if STDOUT_HOOKED:
+        return
+    STDOUT_HOOKED = True
 
     log_file_out = open("./stdout_log.txt", "a", encoding="utf-8")
     log_file_err = open("./stderr_log.txt", "a", encoding="utf-8")
@@ -287,8 +295,5 @@ def hook_stdout():
     sys.stdout = Tee(sys.__stdout__, log_file_out)
     sys.stderr = Tee(sys.__stderr__, log_file_err)
 
-    print("stdout and stderr are hooked to files: "
+    print("\n\nstdout and stderr are hooked to files: "
           "stdout_log.txt and stderr_log.txt.")
-
-
-hook_stdout()
