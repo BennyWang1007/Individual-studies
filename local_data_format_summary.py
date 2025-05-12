@@ -1,6 +1,7 @@
 import json
 
 import ollama
+import re
 from opencc import OpenCC
 from ollama import chat
 from tqdm import tqdm
@@ -9,9 +10,9 @@ from crawler.utils import Logger
 from curriculum_training.constants import (
     FORMATTED_NWR_FILE,
     FORMATTED_NWR_FILE2,
-    BETTER_FORMATTED_NWR_FILE,
-    BETTER_NWR_FILE,
-    BETTER_FORMATTED_NWR_FILE2,
+    FORMATTED_NWR_FILE_V2,
+    NWR_V2,
+    FORMATTED_NWR_FILE_V2_2,
     MAX_INPUT_LENGTH,
     MAX_NEW_TOKENS,
     USE_VLLM,
@@ -30,15 +31,14 @@ if ALLOW_VLLM:
     )
 
 FORMAT_MODEL = "Qwen/Qwen2.5-32B-Instruct"
-# FORMAT_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
 FORMAT_MODEL_OLLAMA = "qwen2.5:32b-instruct"
 
 FILE_TO_FORMAT = FORMATTED_NWR_FILE  # Input file
 FORMATTED_FILE = FORMATTED_NWR_FILE2  # Output file
 
-FILE_TO_FORMAT2 = BETTER_FORMATTED_NWR_FILE
-FILE_TO_FORMAT2 = BETTER_NWR_FILE
-FORMATTED_FILE2 = BETTER_FORMATTED_NWR_FILE2
+FILE_TO_FORMAT2 = FORMATTED_NWR_FILE_V2
+FILE_TO_FORMAT2 = NWR_V2
+FORMATTED_FILE2 = FORMATTED_NWR_FILE_V2_2
 
 logger = Logger("data_format")
 cc = OpenCC("s2twp")  # Simplified Chinese to Traditional Chinese
@@ -50,15 +50,18 @@ def get_format_system_prompt() -> str:
     """
     return (
         "你會收到一個新聞文章以及其摘要，請評估該摘要是否為良好的摘要。\n"
-        "若摘要良好（符合且文章大致內容），請輸出\"符合\"，否則請輸出\"不符合\"。\n"
-        "不良好：摘要出現重複、雜亂的訊息、有未完成的句子，或是總結本身不完整，請輸出\"不符合\"。\n"
-        "範例：\n"
+        "若摘要良好（符合且文章大致內容），請輸出\"符合\"並將無關的內容移除。\n"
+        "若摘要出現重複、雜亂的訊息、有未完成的句子，或是摘要本身不完整，請輸出\"不符合\"。\n"
+        "範例輸入：\n"
         "新聞：\n"
-        "新聞內容...\n\n"
+        "新聞內容\n\n"
         "摘要：\n"
-        "摘要內容：...\n\n"
-        "輸出：\n"
+        "摘要內容：\n\n"
+        "範例輸出：\n"
         "符合\n"
+        "乾淨版摘要\n\n"
+        "或者\n"
+        "不符合"
     )
 
 
@@ -67,7 +70,7 @@ def get_format_user_prompt(nwr: NewsWithRationale) -> str:
     Get the format user prompt for the given NewsWithRationale object.
     """
     return (
-        "請評估以下內容的總結是否是良好的新聞摘要：\n"
+        "請評估以下內容的摘要是否是良好的新聞摘要：\n"
         "新聞：\n"
         f"{nwr.article}\n\n"
         "摘要：\n"
@@ -130,16 +133,18 @@ def read_nwr_file(filename: str, finished_ids) -> list[NewsWithRationale]:
     return nwr_list
 
 
-def extract_acceptance(response: str) -> bool:
-    if response.startswith("符合"):
-        return True
-    elif response.startswith("不符合"):
-        return False
-    elif "符合" in response and "不符合" not in response:
-        return True
+def extract_acceptance(response: str) -> tuple[bool, str]:
+    pattern = r"^(符合)(?:\n乾淨版摘要：)?\n(.+)|^(不符合)"
+    match = re.match(pattern, response)
+    if match:
+        if match.group(1) is not None:
+            clean_summary = match.group(2)
+            return True, clean_summary
+        else:
+            return False, ""
     else:
         logger.error(f"Invalid response format: {response}")
-        return False
+        return False, ""
 
 
 def local_data_format_summary_main(file_to_format, file_to_save) -> None:
@@ -150,9 +155,11 @@ def local_data_format_summary_main(file_to_format, file_to_save) -> None:
     logger.info(f"Finished ids count: {len(finished_ids)}")
     logger.info(f"Finished ids: {int_set_str(finished_ids)}")
 
+    finished_ids = set()  # For testing or reset purposes
+
     # Load the NewsWithRationale excluding the finished ids
     nwr_list = read_nwr_file(file_to_format, finished_ids)
-    # nwr_list = nwr_list[:10]  # for demonstration
+    # nwr_list = nwr_list[:1000]  # For testing purposes
 
     logger.info(f"Total NWR to process: {len(nwr_list)}")
 
@@ -198,13 +205,22 @@ def local_data_format_summary_main(file_to_format, file_to_save) -> None:
             formatted_response = process_nwr_ollama(nwr)
             output_strs.append(formatted_response)
 
-    accepted_nwrs = []
+    accepted_nwrs: list[NewsWithRationale] = []
     for (nwr, output) in zip(nwr_list, output_strs):
-        if extract_acceptance(output):
+        success, summ = extract_acceptance(output)
+        if success:
+            nwr.essential_aspects = [
+                cc.convert(ess.strip()) for ess in nwr.essential_aspects
+            ]
+            nwr.triples = [cc.convert(tri.strip()) for tri in nwr.triples]
+            nwr.summary = cc.convert(summ.strip())
+            nwr.rationale_summary = nwr.summary
+
             accepted_nwrs.append(nwr)
 
     logger.info(f"Accepted NWRs count: {len(accepted_nwrs)}")
-    with open(file_to_save, "w", encoding="utf-8") as f:
+
+    with open(file_to_save, "a", encoding="utf-8") as f:
         for nwr in accepted_nwrs:
             f.write(json.dumps(nwr.to_dict(), ensure_ascii=False) + "\n")
 

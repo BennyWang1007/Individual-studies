@@ -10,8 +10,6 @@ from enum import Enum
 from .constants import GENARATED_ZH_TW_FILE, USE_VLLM, ALLOW_VLLM
 from crawler.utils import Logger
 from news_with_rationale import NewsWithRationale
-from rationale import Rationale
-from summarized_news import SummarizedNews
 
 if ALLOW_VLLM:
     from utils_vllm import vllm_cleanup
@@ -69,15 +67,7 @@ def load_generated_new_with_rationale(
     data: list[NewsWithRationale] = []
     with open(filepath, "r", encoding="utf-8") as f:
         for line in f:
-            dat = json.loads(line)
-            data.append(NewsWithRationale(
-                SummarizedNews(
-                    dat['article'], dat['summary'], dat['id'], dat['label']
-                ),
-                Rationale(
-                    dat['essential_aspects'], dat['triples'], dat['summary']
-                )
-            ))
+            data.append(NewsWithRationale.from_dict(json.loads(line)))
 
     curriculum_utils_logger.info(f"Loaded {len(data)} news with rationale")
     return data
@@ -91,6 +81,7 @@ def nwr_to_prompt(
     """
     sys_str = PREFIX_OF_DIFFICULTY_LEVELS[diff_level]
 
+    # Version 1
     # loader_fn: dict[DifficultyLevels, LoaderFunc] = {
     #     DifficultyLevels.ESSENTIAL_ASPECTS: lambda d: (
     #         sys_str, d.article_full_str(), d.essential_aspects_full_str()
@@ -110,6 +101,33 @@ def nwr_to_prompt(
     #     lambda d: (sys_str, d.article_full_str(), "新聞摘要：\n" + d.summary)
     # }
 
+    # Version 2
+    # loader_fn: dict[DifficultyLevels, LoaderFunc] = {
+    #     DifficultyLevels.ESSENTIAL_ASPECTS: lambda d: (
+    #         sys_str,
+    #         f"新聞：\n{d.article}",
+    #         f"核心要素：\n{d.essential_aspects_str()}"
+    #     ),
+    #     DifficultyLevels.TRIPLES: lambda d: (
+    #         sys_str,
+    #         f"新聞：\n{d.article}\n\n核心要素：\n{d.essential_aspects_str()}",
+    #         f"三元組：\n{d.triples_str()}",
+    #     ),
+    #     DifficultyLevels.SUMMARY: lambda d: (
+    #         sys_str,
+    #         (
+    #             f"新聞：{d.article}\n\n"
+    #             f"核心要素：\n{d.essential_aspects_str()}\n\n"
+    #             f"三元組：\n{d.triples_str()}"
+    #         ),
+    #         f"新聞總結：\n{d.summary}",
+    #     ),
+    #     DifficultyLevels.DIRECT_SUMMARY: lambda d: (
+    #         sys_str, f"新聞：\n{d.article}", f"新聞總結：\n{d.summary}",
+    #     ),
+    # }
+
+    # Version 3
     loader_fn: dict[DifficultyLevels, LoaderFunc] = {
         DifficultyLevels.ESSENTIAL_ASPECTS: lambda d: (
             sys_str, f"新聞：\n{d.article}", f"核心要素：\n{d.essential_aspects_str()}"
@@ -126,10 +144,10 @@ def nwr_to_prompt(
                 f"核心要素：\n{d.essential_aspects_str()}\n\n"
                 f"三元組：\n{d.triples_str()}"
             ),
-            f"新聞總結：\n{d.summary}",
+            f"新聞摘要：\n{d.summary}",
         ),
         DifficultyLevels.DIRECT_SUMMARY: lambda d: (
-            sys_str, f"新聞：\n{d.article}", f"新聞總結：\n{d.summary}",
+            sys_str, f"新聞：\n{d.article}", f"新聞摘要：\n{d.summary}",
         ),
     }
     return [loader_fn[diff_level](nwr) for nwr in nwrs]

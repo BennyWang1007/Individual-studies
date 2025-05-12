@@ -3,17 +3,15 @@ import os
 import re
 from typing import Callable
 
+from opencc import OpenCC
 from transformers import AutoTokenizer
 
 from crawler.utils import Logger
 from curriculum_training.constants import (
-    USE_VLLM, ALLOW_VLLM, MAX_INPUT_LENGTH, MAX_NEW_TOKENS, BETTER_DIR,
+    USE_VLLM, ALLOW_VLLM, MAX_INPUT_LENGTH, MAX_NEW_TOKENS, DATASET_V2_DIR,
 )
 from news_with_rationale import NewsWithRationale as NWR
-from utils import (
-    load_udn_news,
-    # int_set_str,
-)
+from utils import load_udn_news
 from utils_vllm import (
     init_vllm_model,
     filter_by_max_length,
@@ -27,22 +25,21 @@ MODELNAME = "Qwen/Qwen2.5-32B-Instruct"
 
 gen_logger = Logger("data_gen", verbose_level=3)
 
-model, sampling_params = init_vllm_model(
-    model_name=MODELNAME,
-    max_input_length=MAX_INPUT_LENGTH,
-    max_new_tokens=MAX_NEW_TOKENS
-)
+model = None
+sampling_params = None
 tokenizer = AutoTokenizer.from_pretrained(MODELNAME)
+
+cc = OpenCC("s2twp")  # Simplified Chinese to Traditional Chinese
 
 Message = list[dict[str, str]]
 
-if not os.path.exists(BETTER_DIR):
-    os.makedirs(BETTER_DIR)
+if not os.path.exists(DATASET_V2_DIR):
+    os.makedirs(DATASET_V2_DIR)
 
-NWR_FILE = os.path.join(BETTER_DIR, "news_with_rationale.jsonl")
-ESSENTIAL_ASPECTS_FILE = os.path.join(BETTER_DIR, "essential_aspects.jsonl")
-TRIPLES_FILE = os.path.join(BETTER_DIR, "triples.jsonl")
-SUMMARY_FILE = os.path.join(BETTER_DIR, "summary.jsonl")
+NWR_FILE = os.path.join(DATASET_V2_DIR, "news_with_rationale.jsonl")
+ESS_ASPECTS_FILE = os.path.join(DATASET_V2_DIR, "essential_aspects.jsonl")
+TRIPLES_FILE = os.path.join(DATASET_V2_DIR, "triples.jsonl")
+SUMMARY_FILE = os.path.join(DATASET_V2_DIR, "summary.jsonl")
 
 
 def essential_aspects_prompt(nwr: NWR) -> Message:
@@ -106,6 +103,8 @@ def summary_prompt(nwr: NWR) -> Message:
 
 
 def local_gen_response(nwrs: list[NWR], prompt_fn: Callable) -> list[dict]:
+    assert model is not None
+    assert sampling_params is not None
 
     data: list[dict] = []
 
@@ -191,6 +190,7 @@ def parse_essentials(nwrs: list[NWR], responses: list[dict]) -> list[NWR]:
     for i, response in enumerate(responses):
         nwr = nwrs[i]
         essential = parse_essential(response)
+        essential = [cc.convert(ess) for ess in essential]
         if essential:
             nwr.essential_aspects = essential
     return nwrs
@@ -203,6 +203,7 @@ def parse_triples(nwrs: list[NWR], responses: list[dict]) -> list[NWR]:
     for i, response in enumerate(responses):
         nwr = nwrs[i]
         triple = parse_triple(response)
+        triple = [cc.convert(tri) for tri in triple]
         if triple:
             nwr.triples = triple
     return nwrs
@@ -215,6 +216,7 @@ def parse_summaries(nwrs: list[NWR], responses: list[dict]) -> list[NWR]:
     for i, response in enumerate(responses):
         nwr = nwrs[i]
         summary = parse_summary(response)
+        summary = cc.convert(summary)
         if summary:
             nwr.summary = summary
             nwr.rationale_summary = summary
@@ -238,7 +240,7 @@ def load_data(filename: str) -> list[dict]:
 
 
 def load_essential_aspects() -> dict[int, list[str]]:
-    data = load_data(ESSENTIAL_ASPECTS_FILE)
+    data = load_data(ESS_ASPECTS_FILE)
     essential_aspects: dict[int, list[str]] = {}
     for dat in data:
         if dat["id"] in essential_aspects:
@@ -277,7 +279,7 @@ def get_finished_id() -> tuple[set[int], set[int], set[int], set[int]]:
 
     # find finished essential ids
     essential_ids: set[int] = set()
-    data = load_data(ESSENTIAL_ASPECTS_FILE)
+    data = load_data(ESS_ASPECTS_FILE)
     for dat in data:
         if dat["id"] in essential_ids:
             gen_logger.warning(f"Duplicated essential id: {dat['id']}")
@@ -286,7 +288,7 @@ def get_finished_id() -> tuple[set[int], set[int], set[int], set[int]]:
 
     # find finished NWR ids
     triple_ids: set[int] = set()
-    data = load_data(NWR_FILE)
+    data = load_data(TRIPLES_FILE)
     for dat in data:
         if dat["id"] in triple_ids:
             gen_logger.warning(f"Duplicated NWR id: {dat['id']}")
@@ -325,15 +327,32 @@ if __name__ == "__main__":
     triple_data = load_triples()
     summary_data = load_summary()
 
+    assert len(essential_data) == len(list(essential_ids))
+    assert len(triple_data) == len(list(triple_ids))
+    assert len(summary_data) == len(list(summary_ids))
+
     nwrs = [NWR(news, id=i) for i, news in enumerate(news_list)]
     for nwr in nwrs:
         if nwr.id in nwr_ids:
-            nwr.essential_aspects = essential_data[nwr.id]
-            nwr.triples = triple_data[nwr.id]
-            nwr.summary = summary_data[nwr.id]
-            nwr.rationale_summary = summary_data[nwr.id]
+            esss = [cc.convert(ess) for ess in essential_data[nwr.id]]
+            tris = [cc.convert(tri) for tri in triple_data[nwr.id]]
+            nwr.essential_aspects = esss
+            nwr.triples = tris
+            nwr.summary = cc.convert(summary_data[nwr.id])
+            nwr.rationale_summary = nwr.summary
+
+    with open(NWR_FILE, "w", encoding="utf-8") as f:
+        for nwr in nwrs:
+            f.write(json.dumps(nwr.to_dict(), ensure_ascii=False) + "\n")
 
     gen_logger.info(f"Loaded {len(nwr_ids)} NWRs")
+
+    exit()
+    model, sampling_params = init_vllm_model(
+        model_name=MODELNAME,
+        max_input_length=MAX_INPUT_LENGTH,
+        max_new_tokens=MAX_NEW_TOKENS
+    )
 
     # generate essential responses and parse them
     _nwrs = [nwr for nwr in nwrs if nwr.id not in essential_ids]
@@ -341,7 +360,7 @@ if __name__ == "__main__":
     nwrs = parse_essentials(nwrs, responses)  # update the NWRs
     gen_logger.info(f"Generated {len(responses)} essential responses")
 
-    with open(ESSENTIAL_ASPECTS_FILE, "a", encoding="utf-8") as f:
+    with open(ESS_ASPECTS_FILE, "a", encoding="utf-8") as f:
         for dat in responses:
             f.write(json.dumps(dat, ensure_ascii=False) + "\n")
 

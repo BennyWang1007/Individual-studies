@@ -6,8 +6,6 @@ from tqdm import tqdm
 
 from curriculum_training.constants import MODEL_DISTAL_FROM
 from news_with_rationale import NewsWithRationale
-from rationale import Rationale
-from summarized_news import SummarizedNews
 from utils import (
     load_udn_news,
     get_response_filename,
@@ -81,9 +79,15 @@ def parse_response(responses: list[dict]) -> list[NewsWithRationale]:
         # print(f'{triples=}')
 
         id = news.index(d['news'])
-        sum_news = SummarizedNews(d['news'], summary, id, [-1])
-        rationale = Rationale(essential_aspects, triples, summary)
-        data.append(NewsWithRationale(sum_news, rationale))
+        data.append(NewsWithRationale(
+            article=d["news"],
+            summary=summary,
+            id=id,
+            label=[-1],
+            essential_aspects=essential_aspects,
+            triples=triples,
+            rationale_summary=summary,
+        ))
 
     print(f"Parsed {len(data)} responses")
     print(f"Corrupted response ids: {sorted(corrupted_response_ids)}")

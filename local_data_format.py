@@ -13,7 +13,7 @@ from curriculum_training.constants import (
     MODEL_DISTAL_FROM,
     USE_VLLM,
     ALLOW_VLLM,
-    BETTER_FORMATTED_NWR_FILE,
+    FORMATTED_NWR_FILE_V2,
 )
 from news_with_rationale import NewsWithRationale as NWR
 from utils import get_news_with_rationale_filename, int_set_str
@@ -35,7 +35,7 @@ NWR_FILE1 = get_news_with_rationale_filename(MODEL_DISTAL_FROM)
 NWR_FILE1_2 = R"generated_nwr_grok.jsonl"
 
 # to format better version
-FORMAT_FILENAME2 = BETTER_FORMATTED_NWR_FILE
+FORMAT_FILENAME2 = FORMATTED_NWR_FILE_V2
 NWR_FILE2 = "better_training_data/news_with_rationale.jsonl"
 
 logger = Logger("data_format")

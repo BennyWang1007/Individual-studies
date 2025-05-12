@@ -45,7 +45,8 @@ class NewsWithRationale(Rationale, SummarizedNews):
 
     def essential_aspects_str(self):
         """ Returns a string representation of the essential aspects. """
-        return '[' + '], ['.join(self.essential_aspects) + ']'
+        # return '[' + '], ['.join(self.essential_aspects) + ']'  # v1, v2
+        return '[' + ']、['.join(self.essential_aspects) + ']'  # v3
 
     def essential_aspects_full_str(self):
         """
@@ -56,7 +57,8 @@ class NewsWithRationale(Rationale, SummarizedNews):
 
     def triples_str(self):
         """ Returns a string representation of the triples. """
-        return ', '.join(self.triples)
+        # return ', '.join(self.triples)  # v1, v2
+        return '[' + ']、['.join(self.triples) + ']'  # v3
 
     def triples_full_str(self):
         """ Returns a string representation of the triples with field name. """
