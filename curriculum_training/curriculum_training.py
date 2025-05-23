@@ -1,4 +1,4 @@
-import os
+# import os
 import random
 import time
 from dataclasses import field
@@ -29,7 +29,7 @@ training_logger.info("curriculum_training.py started.")
 
 if USE_GPU:
     training_logger.info("Using GPU for training.")
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Use only first GPU
+    # os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Use only first GPU
     device = torch.device("cuda:0")
 else:
     training_logger.info("Using CPU for training.")
@@ -213,15 +213,27 @@ def curriculum_training(
 
         if USE_LORA:
             lora_config = LoraConfig(
-                r=16,
+                # r=16,
+                r=160,
                 lora_alpha=32,
-                target_modules=["q_proj", "v_proj"],
-                lora_dropout=0.05,
+                # target_modules=["q_proj", "v_proj"],
+                target_modules=[
+                    "q_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],
+                # lora_dropout=0.05,
+                lora_dropout=0,
                 bias="none",
                 task_type="CAUSAL_LM",
             )
             model = get_peft_model(model, lora_config)
-            model.print_trainable_parameters()
+            # model.print_trainable_parameters()
+
+        # for name, param in model.named_parameters():
+        #     if "self_attn" in name:  # only train self attention layers
+        #     # if "mlp" in name:  # only train mlp layers
+        #         param.requires_grad = True
+        #     else:
+        #         param.requires_grad = False
+
         model.to(device)
 
     # train progressively on harder tasks
@@ -255,7 +267,10 @@ def curriculum_training(
     if TRAINING:
         # save the final model
         savename = (
-            f"./{model_name}-cl_{news_count}news_{ls}stg_v2-lr_adj"
+            # f"./{model_name}-cl_{news_count}news_{ls}stg_v3-lr_adj-only_mlp"
+            # f"./{model_name}-cl_{news_count}news_{ls}stg_v3-lr_adj-only_attn"
+            f"./{model_name}-cl_{news_count}news_{ls}stg_v3"
+            # f"./{model_name}-cl_{news_count}news_{ls}stg_v3-lr_adj"
         )
         if USE_LORA:
             savename += "_lora"
@@ -418,7 +433,7 @@ def curriculum_trianing_main(
     TRAINING = to_train
 
     if "0.5B" in model_path:
-        BATCH_SIZE = 8
+        BATCH_SIZE = 12
         training_logger.debug("Training 0.5B model, setting batch size to 8.")
     elif not USE_LORA and "1.5B" in model_path:
         BATCH_SIZE = 6

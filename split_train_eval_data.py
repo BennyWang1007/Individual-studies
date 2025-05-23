@@ -10,7 +10,7 @@ from curriculum_training.constants import (
     NWR_TRAINING_V2,
     NWR_BENCHMARK_V2,
 
-    FORMATTED_NWR_V3,
+    NWR_FORMATTED_V3,
     NWR_TRAINING_V3,
     NWR_BENCHMARK_V3,
 )
@@ -80,7 +80,7 @@ if __name__ == "__main__":
     )
 
     split_train_eval_data(
-        nwr_file=FORMATTED_NWR_V3,
+        nwr_file=NWR_FORMATTED_V3,
         train_file=NWR_TRAINING_V3,
         benchmark_file=NWR_BENCHMARK_V3,
     )

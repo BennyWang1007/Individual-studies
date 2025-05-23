@@ -32,32 +32,36 @@ def get_news_with_category(
         total=num, desc=f"Get {num} news from {catagory.name}"
     ) as pbar:
         while num > 0:
-            headlines, next_page = UDNCrawler.get_headlines_catagory(
-                catagory, num, page=cur_page
-            )
-            logger.debug(
-                f"Get {len(headlines)} news from {catagory.name} "
-                f"page {cur_page}-{next_page}"
-            )
-
-            unfetched_urls = set([headline.url for headline in headlines])
-            unfetched_urls -= UDNCrawler.crawled_urls_only
-            unfetched_urls -= UDNCrawler.crawled_failed_urls
-            for unfetched_url in unfetched_urls:
-                _ = UDNCrawler.fetch_and_save_news(
-                    # since we have filter out the crawled urls
-                    unfetched_url, catagory.name, skip_if_crawled=False
+            try:
+                headlines, next_page = UDNCrawler.get_headlines_catagory(
+                    catagory, num, page=cur_page
                 )
-                if UDNCrawler.skipped:
-                    # logger.info(f"Skipped {headline.title}, {headline.url}:")
-                    continue
-                num -= 1
-                pbar.update(1)
-                rand_sleep = (0.1 + random.random() * 0.1) / 2
-                time.sleep(rand_sleep)
+                logger.debug(
+                    f"Get {len(headlines)} news from {catagory.name} "
+                    f"page {cur_page}-{next_page}"
+                )
 
-            if next_page is not None:
-                cur_page = next_page
+                unfetched_urls = set([headline.url for headline in headlines])
+                unfetched_urls -= UDNCrawler.crawled_urls_only
+                unfetched_urls -= UDNCrawler.crawled_failed_urls
+                for unfetched_url in unfetched_urls:
+                    _ = UDNCrawler.fetch_and_save_news(
+                        # since we have filter out the crawled urls
+                        unfetched_url, catagory.name, skip_if_crawled=False
+                    )
+                    if UDNCrawler.skipped:
+                        continue
+                    num -= 1
+                    pbar.update(1)
+                    rand_sleep = (0.1 + random.random() * 0.1) / 2
+                    time.sleep(rand_sleep)
+
+                if next_page is not None:
+                    cur_page = next_page
+            except Exception as e:
+                logger.error(f"Failed to get news, retry in 10s: {e}")
+                time.sleep(10)
+                continue
 
 
 def test_get_news_with_keywords(keywords: str, num: int = 10) -> None:

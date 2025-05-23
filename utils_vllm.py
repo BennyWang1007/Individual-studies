@@ -8,7 +8,8 @@ from vllm.distributed import (
 
 
 def init_vllm_model(
-    model_name: str, max_input_length: int, max_new_tokens: int
+    model_name: str, max_input_length: int, max_new_tokens: int,
+    temperature: float = 0.7,
 ) -> tuple[LLM, SamplingParams]:
     model = LLM(
         model=model_name,
@@ -21,7 +22,7 @@ def init_vllm_model(
         gpu_memory_utilization=0.9,
     )
     sampling_params = SamplingParams(
-        temperature=0.7,
+        temperature=temperature,
         top_p=0.95,
         max_tokens=max_new_tokens
     )

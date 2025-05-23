@@ -123,7 +123,7 @@ def plot_benchmark_results(results: list[BenchmarkResult], field):
 
 
 def get_simple_name(name: str) -> str:
-    name = name.replace("-lr_adj", "").replace("v2", "v3")
+    name = name.replace("-lr_adj", "-l").replace("v2", "v3")
     name = name.replace("better2", "v2").replace("better", "v2")
 
     patterns = [
@@ -141,6 +141,15 @@ def get_simple_name(name: str) -> str:
         # parse Qwen models
         (R"^Qwen/Qwen([0-9\.]+)-([0-9\.]+B)-Instruct$",
          lambda m: f"Qw{m.group(1)}-{m.group(2)}"),
+        # parse Custom models, example:
+        # CustomQwen2Model_pretrained-cl_12952news_1stg_v3-lr_adj
+        (
+            R"^CustomQwen([0-9]+)Model(_pretrained)?-cl_([0-9]+)news_([0-9])"
+            R"(stage|stg)(.*)$",
+            lambda m: f"CusQw{m.group(1)}{'_pre' if m.group(2) else ''}"
+                      f"-{m.group(3)}n_{m.group(4)}stg{m.group(6) or ''}"
+        ),
+
     ]
 
     for pattern, fmt in patterns:

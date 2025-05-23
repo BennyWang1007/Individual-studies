@@ -9,6 +9,7 @@ from transformers import AutoTokenizer
 from crawler.utils import Logger
 from curriculum_training.constants import (
     USE_VLLM, ALLOW_VLLM, MAX_INPUT_LENGTH, MAX_NEW_TOKENS, DATASET_V3_DIR,
+    SUMMARY_FORMATTED_V3, SUMMARY_V3, ESSENTIALS_V3, NWR_V3
 )
 from news_with_rationale import NewsWithRationale as NWR
 from utils import load_udn_news
@@ -23,7 +24,6 @@ from utils_vllm import (
 assert ALLOW_VLLM
 assert USE_VLLM
 
-DIR = DATASET_V3_DIR
 MODELNAME = "Qwen/Qwen2.5-32B-Instruct"
 
 gen_logger = Logger("data_gen", verbose_level=3)
@@ -36,13 +36,8 @@ cc = OpenCC("s2twp")  # Simplified Chinese to Traditional Chinese
 
 Message = list[dict[str, str]]
 
-if not os.path.exists(DIR):
-    os.makedirs(DIR)
-
-NWR_FILE = os.path.join(DIR, "news_with_rationale.jsonl")
-ESSENTIAL_ASPECTS_FILE = os.path.join(DIR, "essential_aspects.jsonl")
-TRIPLES_FILE = os.path.join(DIR, "triples.jsonl")
-SUMMARY_FILE = os.path.join(DIR, "summary.jsonl")
+if not os.path.exists(DATASET_V3_DIR):
+    os.makedirs(DATASET_V3_DIR)
 
 
 def essential_aspects_prompt(nwr: NWR) -> Message:
@@ -72,7 +67,7 @@ def summary_prompt(nwr: NWR) -> Message:
         {
             "role": "system",
             "content": (
-                "請根據以下新聞內容，為新聞生成一份精要的摘要，"
+                "請根據以下新聞內容，為新聞生成一份100字內精簡的摘要，"
                 "請用繁體中文回答。\n"
                 "例如：\n"
                 "生成摘要：\n"
@@ -222,7 +217,7 @@ def load_data(filename: str) -> list[dict]:
 def load_essentials_and_triples() -> tuple[
     dict[int, list[str]], dict[int, list[str]]
 ]:
-    data = load_data(ESSENTIAL_ASPECTS_FILE)
+    data = load_data(ESSENTIALS_V3)
     essential_aspects: dict[int, list[str]] = {}
     triples: dict[int, list[str]] = {}
     for dat in data:
@@ -235,19 +230,8 @@ def load_essentials_and_triples() -> tuple[
     return essential_aspects, triples
 
 
-def load_triples() -> dict[int, list[str]]:
-    data = load_data(TRIPLES_FILE)
-    triples: dict[int, list[str]] = {}
-    for dat in data:
-        if dat["id"] in triples:
-            gen_logger.warning(f"Duplicated triple id: {dat['id']}")
-            continue
-        # triples[dat["id"]] = parse_triple(dat)
-    return triples
-
-
-def load_summary() -> dict[int, str]:
-    data = load_data(SUMMARY_FILE)
+def load_summary(filename) -> dict[int, str]:
+    data = load_data(filename)
     summaries: dict[int, str] = {}
     for dat in data:
         if dat["id"] in summaries:
@@ -257,39 +241,31 @@ def load_summary() -> dict[int, str]:
     return summaries
 
 
-def get_finished_id() -> tuple[set[int], set[int], set[int], set[int]]:
+def get_ids_from_file(filename: str) -> set[int]:
+    """
+    Get the ids from the file.
+    """
+    ids: set[int] = set()
+    data = load_data(filename)
+    for dat in data:
+        if dat["id"] in ids:
+            gen_logger.warning(f"Duplicated id: {dat['id']}")
+            continue
+        ids.add(dat["id"])
+    return ids
+
+
+def get_finished_ids() -> tuple[set[int], set[int], set[int], set[int]]:
     """
     Get the finished essential/triple/summary/nwr ids from the generated files.
     """
 
     # find finished essential ids
-    essential_ids: set[int] = set()
-    triple_ids: set[int] = set()
-    data = load_data(ESSENTIAL_ASPECTS_FILE)
-    for dat in data:
-        if dat["id"] in essential_ids:
-            gen_logger.warning(f"Duplicated essential id: {dat['id']}")
-            continue
-        essential_ids.add(dat["id"])
-        triple_ids.add(dat["id"])
-
-    # # find finished NWR ids
-    # triple_ids: set[int] = set()
-    # data = load_data(TRIPLES_FILE)
-    # for dat in data:
-    #     if dat["id"] in triple_ids:
-    #         gen_logger.warning(f"Duplicated NWR id: {dat['id']}")
-    #         continue
-    #     triple_ids.add(dat["id"])
+    essential_ids = get_ids_from_file(ESSENTIALS_V3)
+    triple_ids = essential_ids.copy()
 
     # find finished zh-tw ids
-    summary_ids: set[int] = set()
-    data = load_data(SUMMARY_FILE)
-    for dat in data:
-        if dat["id"] in summary_ids:
-            gen_logger.warning(f"Duplicated summary id: {dat['id']}")
-            continue
-        summary_ids.add(dat["id"])
+    summary_ids = get_ids_from_file(SUMMARY_FORMATTED_V3)
 
     nwr_ids: set[int] = essential_ids & triple_ids & summary_ids
 
@@ -304,14 +280,14 @@ if __name__ == "__main__":
     gen_logger.info(f"Loaded {len(news_list)} news")
 
     # load finished ids
-    essential_ids, triple_ids, summary_ids, nwr_ids = get_finished_id()
+    essential_ids, triple_ids, summary_ids, nwr_ids = get_finished_ids()
     gen_logger.info(f"Finished essential count: {len(essential_ids)}")
     gen_logger.info(f"Finished triple count: {len(triple_ids)}")
     gen_logger.info(f"Finished summary count: {len(summary_ids)}")
     gen_logger.info(f"Finished NWR count: {len(nwr_ids)}")
 
     essential_data, triple_data = load_essentials_and_triples()
-    summary_data = load_summary()
+    summary_data = load_summary(SUMMARY_FORMATTED_V3)
 
     # assert len(essential_data) == len(list(essential_ids))
     # assert len(triple_data) == len(list(triple_ids))
@@ -329,7 +305,7 @@ if __name__ == "__main__":
             nwr.summary = cc.convert(summary_data[nwr.id])
             nwr.rationale_summary = nwr.summary
 
-    with open(NWR_FILE, "w", encoding="utf-8") as f:
+    with open(NWR_V3, "w", encoding="utf-8") as f:
         for nwr in nwrs:
             if nwr.id in nwr_ids:
                 f.write(json.dumps(nwr.to_dict(), ensure_ascii=False) + "\n")
@@ -350,15 +326,17 @@ if __name__ == "__main__":
     nwrs = parse_summaries(nwrs, responses)  # update the NWRs
     gen_logger.info(f"Generated {len(responses)} summary responses")
 
-    with open(SUMMARY_FILE, "a", encoding="utf-8") as f:
+    with open(SUMMARY_V3, "a", encoding="utf-8") as f:
         for dat in responses:
             f.write(json.dumps(dat, ensure_ascii=False) + "\n")
 
     gen_logger.info(f"{len([nwr for nwr in nwrs if nwr.summary == ''])} "
                     f"NWRs could not generate summaries")
+
     # remove the NWRs that could not generate summaries
     nwrs = [nwr for nwr in nwrs if nwr.summary != ""]
     gen_logger.info(f"remaining {len(nwrs)} NWRs")
+
 
     # generate essential responses and parse them
     _nwrs = [nwr for nwr in nwrs if nwr.id not in essential_ids]
@@ -367,7 +345,7 @@ if __name__ == "__main__":
     nwrs = parse_esss_and_tris(nwrs, responses)  # update the NWRs
     gen_logger.info(f"Generated {len(responses)} essential and triples")
 
-    with open(ESSENTIAL_ASPECTS_FILE, "a", encoding="utf-8") as f:
+    with open(ESSENTIALS_V3, "a", encoding="utf-8") as f:
         for dat in responses:
             f.write(json.dumps(dat, ensure_ascii=False) + "\n")
 
@@ -380,6 +358,6 @@ if __name__ == "__main__":
     gen_logger.info(f"remaining {len(nwrs)} NWRs")
 
     # save the NWRs to file
-    with open(NWR_FILE, "w", encoding="utf-8") as f:
+    with open(NWR_V3, "w", encoding="utf-8") as f:
         for nwr in nwrs:
             f.write(json.dumps(nwr.to_dict(), ensure_ascii=False) + "\n")

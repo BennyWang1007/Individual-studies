@@ -21,9 +21,9 @@ from curriculum_training.constants import (
     MAX_BENCHMARK_LENGTH,
     MAX_NEW_TOKENS,
     NWR_BENCHMARK_FILE,
-    NWR_TRAINING_FILE,
     NWR_BENCHMARK_V2,
     NWR_BENCHMARK_V3,
+    NWR_TRAINING_V3,
 )
 from curriculum_training.curriculum_utils import (
     DifficultyLevels as DL,
@@ -55,7 +55,7 @@ DATASET_NAME = NWR_BENCHMARK_V3
 BENCHMARK_DIR = "benchmark_result"
 
 # count the number of news in the dataset
-with open(NWR_TRAINING_FILE, "r", encoding="utf-8") as f:
+with open(NWR_TRAINING_V3, "r", encoding="utf-8") as f:
     news_count = sum(1 for _ in f)
 
 
@@ -71,12 +71,8 @@ TEST_MODELS: list[str] = [
     "Qwen/Qwen2.5-3B-Instruct",
     "Qwen/Qwen2.5-14B-Instruct",
 
-    # f"./qwen2.5-curriculum-trained_{news_count}news_4stage_A100",
-    # f"./qwen2.5-curriculum-trained_{news_count}news_5stage_A100",
     # Rf"Qwen2.5-0.5B-Instruct-curriculum_{news_count}news_4stage_A100",
     # Rf"Qwen2.5-0.5B-Instruct-curriculum_{news_count}news_5stage_A100",
-    # R"Qwen2.5-0.5B-Instruct-curriculum_12903news_4stage_A100_old",
-    # R"Qwen2.5-0.5B-Instruct-curriculum_12903news_5stage_A100_old",
     R"Qwen2.5-0.5B-Instruct-curriculum_12903news_4stage_A100",
     R"Qwen2.5-0.5B-Instruct-curriculum_12903news_5stage_A100",
 
@@ -116,6 +112,32 @@ TEST_MODELS: list[str] = [
     "google/gemma-3-4b-it",
 
     "Qwen/Qwen2.5-32B-Instruct",
+]
+
+TEST_MODELS: list[str] = [
+    # "CustomQwen2Model-cl_5000news_1stg_v3-lr_adj",
+    # "CustomQwen2Model-cl_5000news_4stg_v3-lr_adj",
+    # "Qwen/Qwen3-32B",
+    # "CustomQwen2Model_pretrained-cl_12952news_1stg_v3-lr_adj",
+    # "CustomQwen2Model_pretrained-cl_12952news_4stg_v3-lr_adj",
+    # "Qwen2.5-0.5B-Instruct-cl_12952news_1stg_v3-lr_adj_lora",
+    # "Qwen2.5-0.5B-Instruct-cl_12952news_4stg_v3-lr_adj_lora",
+
+    # "Qwen2.5-0.5B-Instruct-cl_23934news_1stg_v3",
+    # "Qwen2.5-0.5B-Instruct-cl_23934news_4stg_v3",
+    # "Qwen2.5-0.5B-Instruct-cl_23934news_1stg_v3-lr_adj",
+    # "Qwen2.5-0.5B-Instruct-cl_23934news_4stg_v3-lr_adj",
+
+    "Qwen2.5-0.5B-Instruct-cl_24233news_1stg_v3",
+    "Qwen2.5-0.5B-Instruct-cl_24233news_4stg_v3",
+    "Qwen2.5-0.5B-Instruct-cl_24233news_1stg_v3-lr_adj",
+    "Qwen2.5-0.5B-Instruct-cl_24233news_4stg_v3-lr_adj",
+
+    # "Qwen2.5-0.5B-Instruct-cl_24233news_1stg_v3-lr_adj-only_mlp",
+    # "Qwen2.5-0.5B-Instruct-cl_24233news_4stg_v3-lr_adj-only_mlp",
+    # "Qwen2.5-0.5B-Instruct-cl_24233news_1stg_v3-lr_adj-only_attn",
+    # "Qwen2.5-0.5B-Instruct-cl_24233news_4stg_v3-lr_adj-only_attn",
+
 ]
 
 DEFAULT_METHOD: InferenceType = "VLLM" if USE_VLLM else "OLLAMA"
@@ -163,7 +185,6 @@ match_template = R"^Qwen2.5-[01].5B-Instruct-c"
 for name in TEST_MODELS:
     if re.match(match_template, name):
         assert os.path.exists(name), f"Model {name} not found."
-        print(f"Model {name} found.")
 
 """ ----------------------- Global data -------------------------- """
 
@@ -244,7 +265,8 @@ def evaluate_with_rouge_eval(preds: list[str], refs: list[str]) -> dict:
 
 
 def evaluate_with_bertscore(preds, refs) -> dict:
-    P, R, F1 = bert_score.score(preds, refs, lang="zh-hant", verbose=False)
+    P, R, F1 = bert_score.score(preds, refs, lang="zh",
+                                model_type="bert-base-chinese")
     return {"precision": P.tolist(), "recall": R.tolist(), "f1": F1.tolist()}
 
 
@@ -596,11 +618,10 @@ def gen_benchmark_response(
             eval_logger.info(f"Generating {len(prompts)} model responses.")
 
         llm, sampling_params = init_vllm_model(
-            model_name, MAX_BENCHMARK_LENGTH, MAX_NEW_TOKENS
+            model_name, MAX_BENCHMARK_LENGTH, MAX_NEW_TOKENS, temperature=0.1
         )
         responses_raw = vllm_batch_generate(llm, prompts, sampling_params)
         responses = [response.outputs[0].text for response in responses_raw]
-        responses = [cc.convert(response).strip() for response in responses]
         for (nwr, response) in zip(_nwrs, responses):
             histories[nwr.id] = {
                 "news": nwr.article,
@@ -623,7 +644,6 @@ def gen_benchmark_response(
                 ]
             )
             assert gen_response.message.content is not None
-            response = cc.convert(gen_response.message.content).strip()
             histories[nwr.id] = {
                 "news": nwr.article,
                 "summary": nwr.summary,
@@ -648,6 +668,8 @@ def benchmark_model(benchmark_obj: BenchmarkObj, saving: bool = True) -> dict:
         with open(filepath, "r", encoding="utf-8") as f:
             data_raw: dict[str, dict[str, str]] = json.load(f)
             data = {int(k): v for k, v in data_raw.items()}
+            for v in data.values():
+                v["response"] = cc.convert(v["response"]).strip()
     else:
         data = gen_benchmark_response(benchmark_obj, saving)
 
@@ -665,30 +687,27 @@ def benchmark_model(benchmark_obj: BenchmarkObj, saving: bool = True) -> dict:
         summaries.append(dat["summary"])
         news_list.append(dat["news"])
 
-    processed_responses = []
-    for response in responses:
-        processed_response = response.strip()
-        if processed_response.startswith("新聞摘要：\n"):
-            processed_response = processed_response[6:]
-        elif processed_response.startswith("新聞摘要："):
-            processed_response = processed_response[5:]
-        elif processed_response.startswith("新聞摘要"):
-            processed_response = processed_response[4:]
-        processed_responses.append(processed_response)
+    def clean_summary_prefix(text: str) -> str:
+        for prefix in ["新聞摘要：\n", "新聞摘要：", "新聞摘要"]:
+            if text.startswith(prefix):
+                return text[len(prefix):].strip()
+        return text.strip()
+
+    responses = [clean_summary_prefix(r) for r in responses]
 
     """ ------------------------- Evaluations ------------------------- """
-    # rouge_scores = evaluate_with_rouge(processed_responses, summaries)
-    rouge_scores = evaluate_with_rouge_chinese(processed_responses, summaries)
-    # rouge_scores = evaluate_with_rouge_eval(processed_responses, summaries)
+    # rouge_scores = evaluate_with_rouge(responses, summaries)
+    rouge_scores = evaluate_with_rouge_chinese(responses, summaries)
+    # rouge_scores = evaluate_with_rouge_eval(responses, summaries)
     # print(rouge_scores)
     # exit()
-    bert_scores = evaluate_with_bertscore(processed_responses, summaries)
+    bert_scores = evaluate_with_bertscore(responses, summaries)
 
     if benchmark_obj.use_model_judge:
         judge_scores = judge_summary_0_to_20(
             id_list=id_list,
             articles=news_list,
-            gen_sums=processed_responses,
+            gen_sums=responses,
             ground_truths=summaries,
             model_name=model_name,
             judge_method=benchmark_obj.judge_method,
@@ -698,7 +717,7 @@ def benchmark_model(benchmark_obj: BenchmarkObj, saving: bool = True) -> dict:
         )
     else:
         judge_scores = []
-    judge_scores = [score for score in judge_scores if score > 0]
+    judge_scores = [score for score in judge_scores if score >= 0]
 
     results = {
         "model_name": model_name,
@@ -711,7 +730,7 @@ def benchmark_model(benchmark_obj: BenchmarkObj, saving: bool = True) -> dict:
         "bert_scores": bert_scores,
         "rouge_scores": rouge_scores,
         "judge_scores": judge_scores,
-        "predictions": processed_responses,
+        "predictions": responses,
     }
     eval_logger.info(f"Results for {model_name}:")
     eval_logger.info(f"Bert scores: {results['avg_bert_scores']}")
@@ -807,8 +826,6 @@ if __name__ == "__main__":
         eval_logger.info(f"Generating responses: {benchmark_obj.model_name}")
         gen_benchmark_response(benchmark_obj, saving=save, regenerate=regen)
         cleanup()
-
-    cleanup()
 
     for benchmark_obj in benchmark_queue:
         eval_logger.info(f"Evaluating model: {benchmark_obj.model_name}")

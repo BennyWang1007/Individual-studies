@@ -1,9 +1,9 @@
 import contextlib
 import gc
-import json
 from collections.abc import Callable
 from functools import lru_cache
 
+import orjson
 import torch
 from enum import Enum
 
@@ -67,7 +67,7 @@ def load_generated_new_with_rationale(
     data: list[NewsWithRationale] = []
     with open(filepath, "r", encoding="utf-8") as f:
         for line in f:
-            data.append(NewsWithRationale.from_dict(json.loads(line)))
+            data.append(NewsWithRationale.from_dict(orjson.loads(line)))
 
     curriculum_utils_logger.info(f"Loaded {len(data)} news with rationale")
     return data
@@ -172,7 +172,7 @@ def load_curriculum_datasets(
         sys_str = PREFIX_OF_DIFFICULTY_LEVELS[difficulty_levels]
         with open(GENARATED_ZH_TW_FILE, "r", encoding="utf-8") as f:
             for line in f:
-                dat = json.loads(line)
+                dat = orjson.loads(line)
                 ret.append((
                     sys_str, f"新聞：\n{dat['news']}", dat['response_zh-tw']
                 ))
