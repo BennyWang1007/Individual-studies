@@ -1,0 +1,5 @@
+MODEL	R-1	B-F1	Judge	R-2	R-L
+Custom_pre-12952n_4stg_v3-lr_adj	13.3	50.6	0.9	1.8	4.0
+Custom_pre-12952n_1stg_v3-lr_adj	11.8	50.5	0.6	1.5	5.0
+Custom-5000n_1stg_v3-lr_adj	4.8	47.1	0.0	0.3	4.4
+Custom-5000n_4stg_v3-lr_adj	4.7	48.7	0.0	0.3	5.4
