@@ -11,6 +11,7 @@ ALLOW_VLLM = True
 ALLOW_OLLAMA = True
 
 USE_VLLM = True and ALLOW_VLLM
+USE_LORA = True
 
 InferenceType = Literal["OLLAMA", "VLLM"]
 
@@ -19,7 +20,7 @@ MODEL_BASE_OLLAMA = "qwen2.5:0.5b-instruct"
 MODEL_DISTAL_FROM = "qwen2.5:32b-instruct-q6_K"
 
 MAX_INPUT_LENGTH = 4096
-MAX_BENCHMARK_LENGTH = 2048
+MAX_BENCHMARK_LENGTH = 4096
 MAX_TRAINING_INPUT_LENGTH = 2048
 MAX_NEW_TOKENS = 1024
 
@@ -30,7 +31,7 @@ GENARATED_RESPONSE_FILE = get_response_filename(MODEL_DISTAL_FROM)
 GENARATED_RESPONSE_FILE = f"{DATASET_V1_DIR}/{GENARATED_RESPONSE_FILE}"
 GENARATED_NWR_FILE = get_news_with_rationale_filename(MODEL_DISTAL_FROM)
 GENARATED_NWR_FILE = f"{DATASET_V1_DIR}/{GENARATED_NWR_FILE}"
-GENARATED_ZH_TW_FILE = f"{DATASET_V1_DIR}/{get_zh_tw_filename(MODEL_BASE)}"
+GENARATED_ZH_TW_FILE = get_zh_tw_filename(MODEL_BASE)
 FORMATTED_NWR_FILE = f"{DATASET_V1_DIR}/formatted_nwr.jsonl"
 FORMATTED_NWR_FILE2 = f"{DATASET_V1_DIR}/formatted_nwr2.jsonl"
 NWR_TRAINING_FILE = f"{DATASET_V1_DIR}/formatted_nwr_training.jsonl"
@@ -51,5 +52,10 @@ NWR_BENCHMARK_V3 = f"{DATASET_V3_DIR}/formatted_nwr_benchmark.jsonl"
 SUMMARY_V3 = f"{DATASET_V3_DIR}/summary.jsonl"
 SUMMARY_FORMATTED_V3 = f"{DATASET_V3_DIR}/summary_formatted.jsonl"
 ESSENTIALS_V3 = f"{DATASET_V3_DIR}/essential_aspects.jsonl"
+
+DATASET_V4_DIR = "training_data_v4"
+NWR_FORMATTED_V4 = f"{DATASET_V4_DIR}/news_with_rationale_formatted.jsonl"
+NWR_TRAINING_V4 = f"{DATASET_V4_DIR}/formatted_nwr_training.jsonl"
+NWR_BENCHMARK_V4 = f"{DATASET_V4_DIR}/formatted_nwr_benchmark.jsonl"
 
 BENCHMARK_PERCENTAGE = 0.2

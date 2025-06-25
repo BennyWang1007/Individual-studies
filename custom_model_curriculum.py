@@ -8,7 +8,7 @@ from curriculum_training.curriculum_utils import DifficultyLevels
 from curriculum_training.curriculum_training import curriculum_trianing_main
 from utils import hook_stdout
 
-from transformers import Qwen2Config, Qwen2ForCausalLM
+from transformers import Qwen2ForCausalLM
 # from custome_model import CustomQwen2Config, Qwen2ForCausalLM
 
 
@@ -68,6 +68,13 @@ if __name__ == "__main__":
             DifficultyLevels.SUMMARY,
             DifficultyLevels.DIRECT_SUMMARY,
         ],
+        [
+            DifficultyLevels.TO_ZHT,
+            DifficultyLevels.ESSENTIAL_ASPECTS,
+            DifficultyLevels.TRIPLES,
+            DifficultyLevels.SUMMARY,
+            DifficultyLevels.DIRECT_SUMMARY,
+        ]
     ]
 
     limit_news = None
@@ -97,15 +104,15 @@ if __name__ == "__main__":
     if args.model_path is not None:
         model_path = args.model_path
 
-    create_model(
-        # CustomQwen2Config(
-        Qwen2Config(
-            hidden_size=896,
-            num_attention_heads=14,
-            num_hidden_layers=24,
-        ),
-        model_path
-    )
+    # create_model(
+    #     # CustomQwen2Config(
+    #     Qwen2Config(
+    #         hidden_size=896,
+    #         num_attention_heads=14,
+    #         num_hidden_layers=24,
+    #     ),
+    #     model_path
+    # )
 
     curriculum_trianing_main(
         model_path=model_path,

@@ -1,10 +1,11 @@
 import json
 import os
-import re
 from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
 import numpy as np
+
+from utils import get_simple_name, ljust_labels
 
 
 BENCHMARK_DIR = "benchmark_result"
@@ -21,6 +22,7 @@ class BenchmarkResult:
     bert_precision: float
     bert_recall: float
     bert_f1: float
+    judge_score: float
 
     rouge1_f: np.ndarray
     rouge1_p: np.ndarray
@@ -31,7 +33,7 @@ class BenchmarkResult:
     rouge2_f: np.ndarray
     rouge2_p: np.ndarray
     rouge2_r: np.ndarray
-    judge_score: np.ndarray
+    judge_scores: np.ndarray
 
     bert_precision_std: float
     bert_recall_std: float
@@ -57,7 +59,9 @@ class BenchmarkResult:
 
         scores = {k: np.array(v) for k, v in data["bert_scores"].items()}
         rouge = {k: np.array(v) for k, v in data["rouge_scores"].items()}
-        judge = np.array(data["judge_scores"]) / 20
+        judge_scores = np.array(data["judge_scores"]) / 20.0  # normalize
+        if judge_scores.size == 0:
+            judge_scores = np.array([0.0])
 
         return BenchmarkResult(
             modelname=data["model_name"],
@@ -67,8 +71,9 @@ class BenchmarkResult:
             **{f"bert_{k}_std": stats(scores[k])[1] for k in scores},
             **{k: stats(rouge[k])[0] for k in rouge},
             **{f"{k}_std": stats(rouge[k])[1] for k in rouge},
-            judge_score=judge.mean(),
-            judge_score_std=judge.std(),
+            judge_score=judge_scores.mean(),
+            judge_scores=judge_scores,
+            judge_score_std=judge_scores.std(),
         )
 
     def __str__(self) -> str:
@@ -101,11 +106,11 @@ def plot_benchmark_results(results: list[BenchmarkResult], field):
     values = [getattr(result, field) for result in results]
     errors = [getattr(result, f"{field}_std") for result in results]
     labels = [get_simple_name(r.modelname) for r in results]
-    # Pad labels to the same length
-    max_length = max(len(label) for label in labels)
-    labels = [label.ljust(max_length) for label in labels]
 
-    plt.figure(figsize=(10, 6))
+    # Pad labels to the same length
+    labels = ljust_labels(labels, width=20)
+
+    plt.figure(figsize=(20, 12))
     plt.title(f"Benchmark Results: {field}")
     plt.barh(labels, values, xerr=errors, capsize=5)
     plt.xlabel(field)
@@ -120,46 +125,6 @@ def plot_benchmark_results(results: list[BenchmarkResult], field):
     # save the plot
     plt.savefig(os.path.join(BENCHMARK_DIR, f"{field}.png"))
     plt.close()
-
-
-def get_simple_name(name: str) -> str:
-    name = name.replace("-lr_adj", "-l").replace("v2", "v3")
-    name = name.replace("better2", "v2").replace("better", "v2")
-
-    patterns = [
-        # parse trained models
-        (R"^(Qwen/)?Qwen([0-9\.]+)-([0-9\.]+B)-Instruct"
-         R"(-curriculum|-cl)?_([0-9]+)news_([0-9])(stage|stg)"
-         R"(_A100)?(.*)?$",
-         lambda m: (
-             f"Qw{m.group(2)}-{m.group(3)}_{m.group(5)}n"
-             f"_{m.group(6)}stg{m.group(9) or ''}"
-         )),
-        # parse gemma models
-        (R"^google/gemma-([0-9])-([0-9\.]+b)-it$",
-         lambda m: f"Gemma-{m.group(1)}-{m.group(2)}"),
-        # parse Qwen models
-        (R"^Qwen/Qwen([0-9\.]+)-([0-9\.]+B)-Instruct$",
-         lambda m: f"Qw{m.group(1)}-{m.group(2)}"),
-        # parse Custom models, example:
-        # CustomQwen2Model_pretrained-cl_12952news_1stg_v3-lr_adj
-        (
-            R"^CustomQwen([0-9]+)Model(_pretrained)?-cl_([0-9]+)news_([0-9])"
-            R"(stage|stg)(.*)$",
-            lambda m: f"CusQw{m.group(1)}{'_pre' if m.group(2) else ''}"
-                      f"-{m.group(3)}n_{m.group(4)}stg{m.group(6) or ''}"
-        ),
-
-    ]
-
-    for pattern, fmt in patterns:
-        match = re.match(pattern, name)
-        if match:
-            return fmt(match)
-
-    # return name
-    print(f"Unknown model name format: {name}")
-    return name
 
 
 def load_benchmark_results(benchmark_dir: str) -> list[BenchmarkResult]:

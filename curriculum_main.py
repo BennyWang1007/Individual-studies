@@ -3,7 +3,7 @@ import ast
 
 from curriculum_training.constants import (
     MODEL_BASE,
-    NWR_TRAINING_FILE, NWR_TRAINING_V2, NWR_TRAINING_V3,
+    NWR_TRAINING_FILE, NWR_TRAINING_V2, NWR_TRAINING_V3, NWR_TRAINING_V4,
 )
 from curriculum_training.curriculum_utils import DifficultyLevels
 from curriculum_training.curriculum_training import curriculum_trianing_main
@@ -22,19 +22,20 @@ if __name__ == "__main__":
             DifficultyLevels.SUMMARY,
             DifficultyLevels.DIRECT_SUMMARY,
         ],
-        # [
-        #     DifficultyLevels.TO_ZHT,
-        #     DifficultyLevels.ESSENTIAL_ASPECTS,
-        #     DifficultyLevels.TRIPLES,
-        #     DifficultyLevels.SUMMARY,
-        #     DifficultyLevels.DIRECT_SUMMARY,
-        # ],
+        [
+            DifficultyLevels.TO_ZHT,
+            DifficultyLevels.ESSENTIAL_ASPECTS,
+            DifficultyLevels.TRIPLES,
+            DifficultyLevels.SUMMARY,
+            DifficultyLevels.DIRECT_SUMMARY,
+        ],
     ]
 
-    limit_news = None
+    limit_news = None  # None means no limit
     dataset_name = NWR_TRAINING_FILE  # v1
     dataset_name = NWR_TRAINING_V2  # v2
     dataset_name = NWR_TRAINING_V3  # v3
+    dataset_name = NWR_TRAINING_V4  # v4
 
     to_train = True
 
@@ -48,8 +49,11 @@ if __name__ == "__main__":
                         help="Dataset name", default=None)
     parser.add_argument("--stages_list", type=str,
                         help="AsStages list of a list of lists", default=None)
-    parser.add_argument("--training", "-t", type=bool,
-                        help="Training mode", default=None)
+
+    parser.add_argument("--train", "-t", action="store_true",
+                        help="Enable training mode")
+    parser.add_argument("--not_train", "-nt", action="store_true",
+                        help="Disable training mode")
 
     args = parser.parse_args()
 
@@ -59,8 +63,12 @@ if __name__ == "__main__":
     if args.dataset_name is not None:
         dataset_name = args.dataset_name
 
-    if args.training is not None:
-        to_train = args.training
+    if args.train:
+        to_train = True
+        print("Training mode enabled")
+    elif args.not_train:
+        to_train = False
+        print("Training mode disabled")
 
     if args.stages_list is not None:
         stages_list_int = ast.literal_eval(args.stages_list)
@@ -76,26 +84,6 @@ if __name__ == "__main__":
 
     curriculum_trianing_main(
         model_path=MODEL_BASE,
-        dataset_name=dataset_name,
-        limit_news=limit_news,
-        stages_list=stages_list,
-        to_train=to_train,
-    )
-
-    stages_list = [
-        [
-            DifficultyLevels.DIRECT_SUMMARY,
-        ],
-        [
-            DifficultyLevels.ESSENTIAL_ASPECTS,
-            DifficultyLevels.TRIPLES,
-            DifficultyLevels.SUMMARY,
-            DifficultyLevels.DIRECT_SUMMARY,
-        ],
-    ]
-
-    curriculum_trianing_main(
-        model_path="Qwen/Qwen2.5-1.5B-Instruct",
         dataset_name=dataset_name,
         limit_news=limit_news,
         stages_list=stages_list,

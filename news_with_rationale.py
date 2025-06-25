@@ -86,3 +86,16 @@ class NewsWithRationale(Rationale, SummarizedNews):
             triples=data.get('triples', []),
             rationale_summary=data.get('rationale_summary', '')
         )
+
+    @staticmethod
+    def from_jsonl(file_path: str):
+        """
+        Load data from a JSONL file and return a list of NewsWithRationale
+        objects.
+        """
+        news_with_rationales = []
+        with open(file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                data = json.loads(line)
+                news_with_rationales.append(NewsWithRationale.from_dict(data))
+        return news_with_rationales

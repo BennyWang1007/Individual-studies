@@ -20,10 +20,7 @@ from curriculum_training.constants import (
     InferenceType,
     MAX_BENCHMARK_LENGTH,
     MAX_NEW_TOKENS,
-    NWR_BENCHMARK_FILE,
-    NWR_BENCHMARK_V2,
-    NWR_BENCHMARK_V3,
-    NWR_TRAINING_V3,
+    NWR_BENCHMARK_V4,
 )
 from curriculum_training.curriculum_utils import (
     DifficultyLevels as DL,
@@ -48,96 +45,59 @@ if ALLOW_OLLAMA:
     import ollama
     from ollama import chat
 
-DATASET_NAME = NWR_BENCHMARK_FILE
-DATASET_NAME = NWR_BENCHMARK_V2
-DATASET_NAME = NWR_BENCHMARK_V3
+DATASET_NAME = NWR_BENCHMARK_V4
 
 BENCHMARK_DIR = "benchmark_result"
 
 # count the number of news in the dataset
-with open(NWR_TRAINING_V3, "r", encoding="utf-8") as f:
+with open(DATASET_NAME, "r", encoding="utf-8") as f:
     news_count = sum(1 for _ in f)
 
 
-# JUDGE_MODELNAME_OLLAMA = "qwen2.5:32b-instruct-q6_K"
-JUDGE_MODELNAME_OLLAMA = "qwen2.5:14b-instruct"
+JUDGE_MODELNAME_OLLAMA = "qwen2.5:32b-instruct"
 JUDGE_MODELNAME_LLVM = "Qwen/Qwen2.5-32B-Instruct"
 
 JUDGE_MODELNAME = JUDGE_MODELNAME_LLVM if USE_VLLM else JUDGE_MODELNAME_OLLAMA
 
 
 TEST_MODELS: list[str] = [
+    # Qwen2.5 models
     "Qwen/Qwen2.5-0.5B-Instruct",
     "Qwen/Qwen2.5-3B-Instruct",
     "Qwen/Qwen2.5-14B-Instruct",
+    "Qwen/Qwen2.5-32B-Instruct",
 
-    # Rf"Qwen2.5-0.5B-Instruct-curriculum_{news_count}news_4stage_A100",
-    # Rf"Qwen2.5-0.5B-Instruct-curriculum_{news_count}news_5stage_A100",
-    R"Qwen2.5-0.5B-Instruct-curriculum_12903news_4stage_A100",
-    R"Qwen2.5-0.5B-Instruct-curriculum_12903news_5stage_A100",
-
-    R"Qwen2.5-0.5B-Instruct-curriculum_11011news_1stage_A100_better",
-    R"Qwen2.5-0.5B-Instruct-curriculum_11011news_4stage_A100_better",
-
-    R"Qwen2.5-1.5B-Instruct-curriculum_11011news_1stage_A100_better",
-    R"Qwen2.5-1.5B-Instruct-curriculum_11011news_4stage_A100_better",
-
-    R"Qwen2.5-0.5B-Instruct-curriculum_11114news_1stage_A100_better2",
-    R"Qwen2.5-0.5B-Instruct-curriculum_11114news_4stage_A100_better2",
-    R"Qwen2.5-0.5B-Instruct-curriculum_11114news_5stage_A100_better2",
-
-    # R"Qwen2.5-0.5B-Instruct-curriculum_11114news_4stage_A100_better-lr_adjusted",
-    # R"Qwen2.5-0.5B-Instruct-curriculum_11114news_1stage_A100_better-lr_adjusted_lora_merged",
-    # R"Qwen2.5-0.5B-Instruct-curriculum_11114news_4stage_A100_better-lr_adjusted_lora_merged",
-    # R"Qwen2.5-0.5B-Instruct-curriculum_11114news_5stage_A100_better-lr_adjusted_lora_merged",
-
-    R"Qwen2.5-0.5B-Instruct-cl_12952news_1stg_v2-lr_adj",
-    R"Qwen2.5-0.5B-Instruct-cl_12952news_4stg_v2-lr_adj",
-
-    R"Qwen2.5-1.5B-Instruct-cl_12952news_1stg_v2-lr_adj",
-    R"Qwen2.5-1.5B-Instruct-cl_12952news_4stg_v2-lr_adj",
-
-    # R"qwen2.5-curriculum-trained_3184news_4stage_A100",
-    # R"qwen2.5-curriculum-trained_3184news_5stage_A100",
-
-    # "qwen2.5:0.5b-instruct",
-    # "qwen2.5:1.5b-instruct",
-    # "qwen2.5:3b-instruct",
-    # "qwen2.5:7b-instruct",
-    # "qwen2.5:14b-instruct",
+    # Qwen3 models
+    "Qwen/Qwen3-0.6B",
+    "Qwen/Qwen3-32B",
 
     # Gemma models
     "google/gemma-2-2b-it",
     "google/gemma-3-1b-it",
     "google/gemma-3-4b-it",
 
-    "Qwen/Qwen2.5-32B-Instruct",
-]
+    # Custom Qwen2.5 models
+    "CustomQwen2Model_pretrained-cl_24233news_1stg_v4-lr_adj",
+    "CustomQwen2Model_pretrained-cl_24233news_4stg_v4-lr_adj",
+    "CustomQwen2Model_pretrained-cl_24233news_1stg_v4-lr_adj_lora",
 
-TEST_MODELS: list[str] = [
-    # "CustomQwen2Model-cl_5000news_1stg_v3-lr_adj",
-    # "CustomQwen2Model-cl_5000news_4stg_v3-lr_adj",
-    # "Qwen/Qwen3-32B",
-    # "CustomQwen2Model_pretrained-cl_12952news_1stg_v3-lr_adj",
-    # "CustomQwen2Model_pretrained-cl_12952news_4stg_v3-lr_adj",
-    # "Qwen2.5-0.5B-Instruct-cl_12952news_1stg_v3-lr_adj_lora",
-    # "Qwen2.5-0.5B-Instruct-cl_12952news_4stg_v3-lr_adj_lora",
-
-    # "Qwen2.5-0.5B-Instruct-cl_23934news_1stg_v3",
-    # "Qwen2.5-0.5B-Instruct-cl_23934news_4stg_v3",
-    # "Qwen2.5-0.5B-Instruct-cl_23934news_1stg_v3-lr_adj",
-    # "Qwen2.5-0.5B-Instruct-cl_23934news_4stg_v3-lr_adj",
-
+    # Qwen2.5 learning rate adjusted
     "Qwen2.5-0.5B-Instruct-cl_24233news_1stg_v3",
     "Qwen2.5-0.5B-Instruct-cl_24233news_4stg_v3",
     "Qwen2.5-0.5B-Instruct-cl_24233news_1stg_v3-lr_adj",
     "Qwen2.5-0.5B-Instruct-cl_24233news_4stg_v3-lr_adj",
 
-    # "Qwen2.5-0.5B-Instruct-cl_24233news_1stg_v3-lr_adj-only_mlp",
-    # "Qwen2.5-0.5B-Instruct-cl_24233news_4stg_v3-lr_adj-only_mlp",
-    # "Qwen2.5-0.5B-Instruct-cl_24233news_1stg_v3-lr_adj-only_attn",
-    # "Qwen2.5-0.5B-Instruct-cl_24233news_4stg_v3-lr_adj-only_attn",
+    # Qwen2.5 partial freezed
+    "Qwen2.5-0.5B-Instruct-cl_24233news_1stg_v3-lr_adj-only_mlp",
+    "Qwen2.5-0.5B-Instruct-cl_24233news_4stg_v3-lr_adj-only_mlp",
+    "Qwen2.5-0.5B-Instruct-cl_24233news_1stg_v3-lr_adj-only_attn",
+    "Qwen2.5-0.5B-Instruct-cl_24233news_4stg_v3-lr_adj-only_attn",
 
+    # Qwen2.5 v4
+    "Qwen2.5-0.5B-Instruct-cl_24233news_1stg_v4-lr_adj",
+    "Qwen2.5-0.5B-Instruct-cl_24233news_4stg_v4-lr_adj",
+    "Qwen2.5-0.5B-Instruct-cl_24233news_5stg_v4-lr_adj",
+    "Qwen2.5-0.5B-Instruct-cl_24233news_5stg_v4-lr_adj_lora",
 ]
 
 DEFAULT_METHOD: InferenceType = "VLLM" if USE_VLLM else "OLLAMA"
@@ -224,7 +184,8 @@ def evaluate_with_rouge_chinese(preds: list[str], refs: list[str]) -> dict:
     refs = [" ".join(jieba.cut(ref)) for ref in refs]
 
     scores = []
-    for pred, ref in zip(preds, refs):
+    for pred, ref in tqdm(zip(preds, refs), total=len(preds),
+                          desc="Evaluating with Rouge Chinese"):
         if len(pred) == 0 or len(ref) == 0:
             scores.append(
                 {
@@ -266,7 +227,7 @@ def evaluate_with_rouge_eval(preds: list[str], refs: list[str]) -> dict:
 
 def evaluate_with_bertscore(preds, refs) -> dict:
     P, R, F1 = bert_score.score(preds, refs, lang="zh",
-                                model_type="bert-base-chinese")
+                                model_type="bert-base-chinese", verbose=True)
     return {"precision": P.tolist(), "recall": R.tolist(), "f1": F1.tolist()}
 
 
@@ -370,6 +331,8 @@ def extract_scores_from_responses(
         if match:
             try:
                 score = int(match.group(1))
+                if score < 0 or score > 20:
+                    continue
                 judge_history[id] = output
             except ValueError:
                 eval_logger.error(f"Invalid score format: {output}")
@@ -434,16 +397,7 @@ def judge_summary_0_to_20(
     gen_responses: dict[int, str] = {}
 
     if judge_method == "VLLM":
-        if prev_judge_model != judge_model:
-            if llm is not None:
-                del llm
-            if sampling_params is not None:
-                del sampling_params
-            if tokenizer is not None:
-                del tokenizer
-            cleanup()
-            tokenizer = AutoTokenizer.from_pretrained(judge_model)
-
+        tokenizer = AutoTokenizer.from_pretrained(judge_model)
         assert tokenizer is not None
         prompts = [
             tokenizer.apply_chat_template(
@@ -457,7 +411,8 @@ def judge_summary_0_to_20(
                     }
                 ],
                 tokenize=False,
-                add_generation_prompt=True
+                add_generation_prompt=True,
+                # enable_thinking=False,  # Disable thinking prompt for Qwen3
             )
             for article, gen_sum, gt in zip(articles, _sums, gts)
         ]
@@ -696,12 +651,6 @@ def benchmark_model(benchmark_obj: BenchmarkObj, saving: bool = True) -> dict:
     responses = [clean_summary_prefix(r) for r in responses]
 
     """ ------------------------- Evaluations ------------------------- """
-    # rouge_scores = evaluate_with_rouge(responses, summaries)
-    rouge_scores = evaluate_with_rouge_chinese(responses, summaries)
-    # rouge_scores = evaluate_with_rouge_eval(responses, summaries)
-    # print(rouge_scores)
-    # exit()
-    bert_scores = evaluate_with_bertscore(responses, summaries)
 
     if benchmark_obj.use_model_judge:
         judge_scores = judge_summary_0_to_20(
@@ -719,12 +668,19 @@ def benchmark_model(benchmark_obj: BenchmarkObj, saving: bool = True) -> dict:
         judge_scores = []
     judge_scores = [score for score in judge_scores if score >= 0]
 
+    # rouge_scores = evaluate_with_rouge(responses, summaries)
+    # rouge_scores = evaluate_with_rouge_eval(responses, summaries)
+    # print(rouge_scores)
+    # exit()
+
+    rouge_scores = evaluate_with_rouge_chinese(responses, summaries)
+    bert_scores = evaluate_with_bertscore(responses, summaries)
+
     results = {
         "model_name": model_name,
         "num_samples": len(nwrs),
         "judge_model": JUDGE_MODELNAME,
         "avg_bert_scores": avg_bert_scores(bert_scores),
-        # "avg_rouge_scores": avg_rouge_scores(rouge_scores),
         "avg_rouge_scores": avg_rouge_scores_chinese(rouge_scores),
         "avg_judge_scores": avg_judge_scores(judge_scores),
         "bert_scores": bert_scores,

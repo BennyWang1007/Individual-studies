@@ -13,6 +13,10 @@ from curriculum_training.constants import (
     NWR_FORMATTED_V3,
     NWR_TRAINING_V3,
     NWR_BENCHMARK_V3,
+
+    NWR_FORMATTED_V4,
+    NWR_TRAINING_V4,
+    NWR_BENCHMARK_V4,
 )
 
 # def id_to_float_hash(identifier: str) -> float:
@@ -83,4 +87,10 @@ if __name__ == "__main__":
         nwr_file=NWR_FORMATTED_V3,
         train_file=NWR_TRAINING_V3,
         benchmark_file=NWR_BENCHMARK_V3,
+    )
+
+    split_train_eval_data(
+        nwr_file=NWR_FORMATTED_V4,
+        train_file=NWR_TRAINING_V4,
+        benchmark_file=NWR_BENCHMARK_V4,
     )

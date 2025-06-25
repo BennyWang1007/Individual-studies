@@ -241,7 +241,9 @@ def get_formatted_nwr_filename(model_name: str) -> str:
 
 def get_zh_tw_filename(model_name: str) -> str:
     """ Get the zh_tw filename """
-    return legalize_filename(f"generated_zh-tw_responses_{model_name}.jsonl")
+    return "training_data_v1/" + legalize_filename(
+        f"generated_zh-tw_responses_{model_name}.jsonl"
+    )
 
 
 STDOUT_HOOKED = False
@@ -297,3 +299,99 @@ def hook_stdout():
 
     print("\n\nstdout and stderr are hooked to files: "
           "stdout_log.txt and stderr_log.txt.")
+
+
+def ljust_labels(labels: list[str], width: int = 20) -> list[str]:
+    """
+    Left-justify labels to a specified width.
+    """
+    # Split the longest label into two lines if needed
+    max_length = max(len(label) for label in labels)
+
+    one_line_labels = [label for label in labels if len(label) <= width]
+    if one_line_labels:
+        ljust_len = max(len(label) for label in labels if len(label) < width)
+    else:
+        ljust_len = 0
+    to_adj: list[tuple[int, int]] = []
+
+    # if max_length > width:
+    for idx in range(len(labels)):
+        label = labels[idx]
+        if len(label) <= width:
+            continue
+        split_point = len(label) // 2
+        # Try to split at a dash or underscore if possible
+        for sep in ['-', '_']:
+            idx2 = label.find(sep, split_point - 5, split_point + 5)
+            if idx2 != -1:
+                split_point = idx2 + 1
+                break
+
+        ljust_len = max(ljust_len, split_point)
+        ljust_len = max(ljust_len, len(label) - split_point)
+
+        to_adj.append((idx, split_point))
+
+    # Left-justify all labels to the maximum length
+    for idx in range(len(labels)):
+        if len(labels[idx]) <= max_length:
+            labels[idx] = labels[idx].ljust(ljust_len)
+
+    # print(f"Longest label length: {ljust_len}")
+    # print(f"Labels to adjust: {to_adj}")
+
+    # Split the labels at the split points and ljust them
+    for idx, split_point in to_adj:
+        label = labels[idx]
+        labels[idx] = (
+            label[:split_point].ljust(ljust_len)
+            + '\n'
+            + label[split_point:].ljust(ljust_len)
+        )
+
+    return labels
+
+
+def get_simple_name(name: str) -> str:
+    name = name.replace("v2", "v3")
+    name = name.replace("better2", "v2").replace("better", "v2")
+
+    patterns = [
+        # parse trained models
+        (R"^(Qwen/)?Qwen([0-9\.]+)-([0-9\.]+B)-Instruct"
+         R"(-curriculum|-cl)?_([0-9]+)news_([0-9])(stage|stg)"
+         R"(_A100)?(.*)?$",
+         lambda m: (
+             f"Qw{m.group(2)}-{m.group(3)}"
+             f"_{m.group(6)}stg{m.group(9) or ''}"
+         )),
+        # parse gemma models
+        (R"^google/gemma-([0-9])-([0-9\.]+b)-it$",
+         lambda m: f"Gemma-{m.group(1)}-{m.group(2)}"),
+        # parse Qwen models
+        (R"^Qwen/Qwen([0-9\.]+)-([0-9\.]+B)(-Instruct$)?",
+            lambda m: f"Qw{m.group(1)}-{m.group(2)}"),
+        # parse Custom models
+        (
+            R"^CustomQwen([0-9]+)Model(_pretrained)?-cl_([0-9]+)news_([0-9])"
+            R"(stage|stg)(.*)$",
+            lambda m: f"Custom{'_pre' if m.group(2) else ''}"
+                      f"-{m.group(3)}n_{m.group(4)}stg{m.group(6) or ''}"
+        ),
+        # parse Llama models
+        (R"^meta-llama/Llama-([0-9\.]+)-([0-9]+B)-Instruct$",
+         lambda m: f"Llama-{m.group(1)}-{m.group(2)}"),
+        # parse DeepSeek models
+        (R"^deepseek-ai/DeepSeek-R1-Distill-Qwen-([0-9.]+)B$",
+         lambda m: f"DeepSeek-R1-{m.group(1)}B"),
+    ]
+
+    for pattern, fmt in patterns:
+        match = re.match(pattern, name)
+        if match:
+            return fmt(match)
+
+    # return name
+    print(f"Unknown model name format: {name}")
+    return name

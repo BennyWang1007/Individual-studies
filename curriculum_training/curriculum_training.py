@@ -13,18 +13,17 @@ from transformers import (
     TrainingArguments,
 )
 
-from .constants import MAX_TRAINING_INPUT_LENGTH
+from .constants import MAX_TRAINING_INPUT_LENGTH, USE_LORA
 from .curriculum_utils import DifficultyLevels, load_curriculum_datasets
 from crawler.utils import Logger, TERM_COLORS
 
 USE_GPU = True and torch.cuda.is_available()
-USE_LORA = False
 MAX_INPUT_LENGTH = MAX_TRAINING_INPUT_LENGTH
 
 if USE_LORA:
     from peft import get_peft_model, LoraConfig
 
-training_logger = Logger("training", verbose_level=3)
+training_logger = Logger("training", verbose_level=4)
 training_logger.info("curriculum_training.py started.")
 
 if USE_GPU:
@@ -62,8 +61,8 @@ def get_training_args(difficulty_level: DifficultyLevels, train_dataset=None):
         case DifficultyLevels.SUMMARY:
             learning_rate = 1e-5
         case DifficultyLevels.DIRECT_SUMMARY:
-            # learning_rate = 1e-5  # v1, 2
-            learning_rate = 5e-5  # v3
+            # learning_rate = 1e-5  # default
+            learning_rate = 5e-5  # lr-adjusted
         case _:
             raise Exception("Invalid difficulty level")
 
@@ -87,29 +86,10 @@ def get_training_args(difficulty_level: DifficultyLevels, train_dataset=None):
     )
 
 
-# def tokenize_function(sample: Dataset):
-#     tokenized_inputs = tokenizer(
-#         sample["input"],
-#         padding="max_length",
-#         truncation=True,
-#         max_length=MAX_INPUT_LENGTH,
-#         return_tensors="pt",
-#     )
-#     labels = tokenizer(
-#         sample["output"],
-#         padding="max_length",
-#         truncation=True,
-#         max_length=MAX_INPUT_LENGTH,
-#         return_tensors="pt",
-#     )
-#     tokenized_inputs["labels"] = labels["input_ids"]
-#     return tokenized_inputs
-
 def tokenize_function(sample: Dataset):
     combined_texts = [
         inp + out for inp, out in zip(sample["input"], sample["output"])
     ]
-    # print(f"Combined texts: {combined_texts}")
     tokenized_inputs = tokenizer(
         combined_texts,
         padding="max_length",
@@ -138,9 +118,6 @@ def check_to_filter(messages: list[dict], df: DifficultyLevels) -> bool:
 
 def check_batch_shape(dataset):
     if len(dataset) == 0:
-        training_logger.log(
-            "Batch shape check passed!", "SUCCESS", TERM_COLORS.GREEN
-        )
         return
     batch = tokenizer(
         [dataset[i]["input"] for i in range(BATCH_SIZE)],
@@ -164,6 +141,15 @@ def check_batch_shape(dataset):
     assert batch["input_ids"].shape == (BATCH_SIZE, MAX_INPUT_LENGTH)
     assert batch["labels"].shape == (BATCH_SIZE, MAX_INPUT_LENGTH)
     assert batch["attention_mask"].shape == (BATCH_SIZE, MAX_INPUT_LENGTH)
+
+
+def check_batch_shapes(datasets: list[Dataset]):
+    """
+    Check the shape of the batches in the datasets.
+    """
+    for dataset in datasets:
+        check_batch_shape(dataset)
+
     training_logger.log(
         "Batch shape check passed!", "SUCCESS", TERM_COLORS.GREEN
     )
@@ -212,21 +198,28 @@ def curriculum_training(
         )
 
         if USE_LORA:
-            lora_config = LoraConfig(
-                # r=16,
-                r=160,
+            qv_config = LoraConfig(
+                r=32,  # disable LoRA for q_proj and v_proj
                 lora_alpha=32,
-                # target_modules=["q_proj", "v_proj"],
-                target_modules=[
-                    "q_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],
+                target_modules=["q_proj", "v_proj"],
+                lora_dropout=0,
+                bias="none",
+                task_type="CAUSAL_LM",
+            )
+            model = get_peft_model(model, qv_config)
+            gud_config = LoraConfig(
+                r=160,
+                lora_alpha=160,
+                target_modules=["gate_proj", "up_proj", "down_proj"],
                 # lora_dropout=0.05,
                 lora_dropout=0,
                 bias="none",
                 task_type="CAUSAL_LM",
             )
-            model = get_peft_model(model, lora_config)
-            # model.print_trainable_parameters()
+            model.add_adapter("high_r_proj", gud_config)
+            model.set_adapter("high_r_proj")
 
+        # freeze all parameters except the self-attention/mlp layers
         # for name, param in model.named_parameters():
         #     if "self_attn" in name:  # only train self attention layers
         #     # if "mlp" in name:  # only train mlp layers
@@ -266,12 +259,7 @@ def curriculum_training(
 
     if TRAINING:
         # save the final model
-        savename = (
-            # f"./{model_name}-cl_{news_count}news_{ls}stg_v3-lr_adj-only_mlp"
-            # f"./{model_name}-cl_{news_count}news_{ls}stg_v3-lr_adj-only_attn"
-            f"./{model_name}-cl_{news_count}news_{ls}stg_v3"
-            # f"./{model_name}-cl_{news_count}news_{ls}stg_v3-lr_adj"
-        )
+        savename = f"./{model_name}-cl_{news_count}news_{ls}stg_v4-lr_adj"
         if USE_LORA:
             savename += "_lora"
             model = model.merge_and_unload()  # This merges LoRA weights
@@ -418,6 +406,36 @@ def print_sample_texts(
         print("-" * 80)
 
 
+def adjust_params(model_name: str) -> None:
+    """
+    Adjust parameters based on the VRAM size and model name.
+    Args:
+        vram_size: size of the VRAM (e.g., 32 for 32GB)
+        model_name: name of the model (e.g., "Qwen/Qwen2.5-0.5B-Instruct")
+    """
+    global BATCH_SIZE
+
+    # simple setting for 80GB VRAM
+    batch_size = BATCH_SIZE
+    if "0.5B" in model_name:
+        batch_size = 12
+    elif not USE_LORA and "1.5B" in model_name:
+        batch_size = 6
+    elif "3B" in model_name:
+        batch_size = 3
+    elif "7B" in model_name:
+        batch_size = 2
+
+    vram_size = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+
+    BATCH_SIZE = int(batch_size * vram_size // 80)
+    assert BATCH_SIZE > 0, "Batch size must be greater than 0"
+    assert isinstance(BATCH_SIZE, int), "Batch size must be an integer"
+
+    training_logger.info(f"Adjusted batch size: {BATCH_SIZE} for VRAM size: "
+                         f"{vram_size}GB and model: {model_name}")
+
+
 def curriculum_trianing_main(
     model_path: str,
     dataset_name: str,
@@ -425,23 +443,14 @@ def curriculum_trianing_main(
     stages_list: list[list[DifficultyLevels]] = field(default_factory=list),
     to_train: bool = True,
 ) -> None:
-    global tokenizer, news_count, BATCH_SIZE, TRAINING
+    global tokenizer, news_count, TRAINING
 
     news_count = 0
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     tokenizer.padding_side = "left"
     TRAINING = to_train
 
-    if "0.5B" in model_path:
-        BATCH_SIZE = 12
-        training_logger.debug("Training 0.5B model, setting batch size to 8.")
-    elif not USE_LORA and "1.5B" in model_path:
-        BATCH_SIZE = 6
-        training_logger.debug("Training 1.5B model, setting batch size to 4.")
-    elif "3B" in model_path:
-        BATCH_SIZE = 3
-    elif "7B" in model_path:
-        BATCH_SIZE = 2
+    adjust_params(model_name=model_path)
 
     with open(dataset_name, "r", encoding="utf-8") as f:
         news_count = sum(1 for _ in f)
@@ -479,8 +488,8 @@ def curriculum_trianing_main(
             f"Difficulty level {DifficultyLevels(diff_level).name:<18}: "
             f"{len(train_dataset)} train, {len(eval_dataset)} eval samples"
         )
-        check_batch_shape(train_dataset)
-        check_batch_shape(eval_dataset)
+
+    check_batch_shapes(train_datasets + eval_datasets)
 
     total_train_samples = sum(len(dataset) for dataset in train_datasets)
     total_eval_samples = sum(len(dataset) for dataset in eval_datasets)

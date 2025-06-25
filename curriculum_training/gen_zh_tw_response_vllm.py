@@ -3,7 +3,6 @@ import sys
 
 from opencc import OpenCC
 from transformers import AutoTokenizer
-from tqdm import tqdm
 
 from .constants import (
     MODEL_BASE,
@@ -16,11 +15,11 @@ from .curriculum_utils import (
     PREFIX_OF_DIFFICULTY_LEVELS,
 )
 from crawler.utils import Logger
-from utils import (
-    get_zh_tw_filename,
-    load_udn_news,
+from utils import get_zh_tw_filename, load_udn_news
+from utils_vllm import (
     init_vllm_model,
     filter_by_max_length,
+    vllm_batch_generate,
 )
 
 gen_logger = Logger("data_gen_vllm", verbose_level=3)
@@ -73,27 +72,20 @@ def gen_zh_tw_response_vllm(
     )
     gen_logger.info(f"Filtered prompts: {len(prompts)}")
 
-    outputs = []
-    batch_size = 1000
-    for i in range(0, len(prompts), batch_size):
-        batch_prompts = prompts[i:i + batch_size]
-        responses = llm.generate(batch_prompts, sampling_params)
-        outputs.extend(responses)
+    responses = vllm_batch_generate(llm, prompts, sampling_params)
+    outputs = [response.outputs[0].text for response in responses]
+    response_zh_tws = [cc.convert(output) for output in outputs]
 
-    for id, news, output in tqdm(
-        zip(id_list, news_list, outputs),
-        total=len(outputs), desc="Generating ZH-TW responses using vLLM",
-    ):
-        str_zh_cn = output.outputs[0].text
-        str_zh_tw = cc.convert(str_zh_cn)
+    gen_logger.info(f"Saving {len(outputs)} responses to {save_filename}")
 
-        with open(save_filename, "a", encoding="utf-8") as f:
+    with open(save_filename, "a", encoding="utf-8") as f:
+        for i in range(len(id_list)):
             f.write(json.dumps(
                 {
-                    "id": id,
-                    "news": news,
-                    "response_zh-cn": str_zh_cn,
-                    "response_zh-tw": str_zh_tw
+                    "id": id_list[i],
+                    "news": news_list[i],
+                    "response_zh-cn": outputs[i],
+                    "response_zh-tw": response_zh_tws[i]
                 },
                 ensure_ascii=False
             ) + "\n")

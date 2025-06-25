@@ -14,4 +14,11 @@ transformers
 vllm
 bert_score
 rouge_score
+evaluate
+jieba
+rouge_chinese
+orjson
+accelerate
+peft
+flash-attn
 --extra-index-url https://download.pytorch.org/whl/cu124
