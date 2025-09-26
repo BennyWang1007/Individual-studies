@@ -1,0 +1,15 @@
+% !TeX root = ../main.tex
+
+\chapter{Conclusion}
+
+This study systematically explored strategies for building lightweight Chinese summarization models, focusing on data generation, training configurations, and curriculum learning. The results provide both methodological insights and practical guidance for the development of efficient yet high-quality summarization systems.
+
+In terms of \textbf{data generation}, the experiments reveal that direct reasoning and stage-by-stage decomposition tend to produce incomplete or unfocused outputs, limiting their usefulness as training data. By contrast, a \textbf{summary-first approach} consistently delivers coherent and comprehensive summaries, establishing a stable foundation for downstream reasoning and enabling more effective student–teacher distillation.
+
+Regarding \textbf{training strategies}, a \textbf{non-decaying learning rate combined with full parameter fine-tuning} outperforms methods such as LoRA and partial freezing, indicating that full fine-tuning remains the most effective choice. Moreover, contrary to expectations, LoRA and partial freezing provide little benefit in terms of training time or VRAM savings, further reinforcing the practicality of full parameter fine-tuning.
+
+The investigation of \textbf{curriculum learning} further highlights its importance in low-resource conditions. While multi-stage curricula contribute modest gains when large-scale pretraining is available, they prove highly effective for smaller, custom-pretrained models, substantially improving summarization accuracy, stylistic fidelity, and robustness. This staged progression also enables the student model to mitigate errors inherited from the teacher, such as abnormal token sequences and inconsistent linguistic output.
+
+Taken together, these strategies enabled the development of a \textbf{0.5B-parameter model} that approaches the performance of much larger 3B models, while outperforming comparable small-scale baselines. Notably, the model demonstrates strong handling of Traditional Chinese, surpassing even its teacher in linguistic appropriateness.
+
+In conclusion, this work demonstrates that through \textbf{summary-first data generation, full fine-tuning with steady learning signals, and curriculum-based task progression}, it is possible to achieve a balance of \textbf{efficiency, robustness, and high-quality summarization} within a compact architecture. The proposed framework not only advances the practical deployment of lightweight summarization models, including mobile applications, but also provides a replicable pathway for future research on resource-efficient natural language processing.

@@ -1,0 +1,78 @@
+% !TeX root = ../main.tex
+
+% \newenvironment{denotation}[1][2.5cm]{
+% \chapter*{\centering Denotation}
+% \addcontentsline{toc}{chapter}{Denotation}
+% \phantomsection  % Add phantom section for proper PDF bookmarks
+% \noindent
+% \begin{list}{}{
+%   \renewcommand\makelabel[1]{\textbf{##1}\hfill}  % Make labels bold
+%   \setlength{\labelwidth}{#1}                     % 符號欄寬度
+%   \setlength{\labelsep}{0.5cm}                    % 標籤與列表文字距離
+%   \setlength{\itemindent}{0cm}                    % 標籤縮進
+%   \setlength{\leftmargin}{\labelwidth+\labelsep}  % 標籤左邊界
+%   \setlength{\rightmargin}{0cm}                   % 標籤右邊界
+%   \setlength{\parsep}{0cm}                        % 段落間距
+%   \setlength{\itemsep}{12pt}                      % 標籤間距 (reduced for better spacing)
+%   \setlength{\listparindent}{0cm}                 % 段落縮進
+%   \setlength{\topsep}{12pt}                       % 標籤與上文距離 (add some space)
+%   \setlength{\partopsep}{0pt}                     % Additional spacing control
+% }}{\end{list}}
+
+% Alternative simpler approach using description environment
+\newenvironment{denotation}[1][2.5cm]{
+  \chapter*{\centering Denotation}
+  \addcontentsline{toc}{chapter}{Denotation}
+  \phantomsection
+  \begin{description}[leftmargin=#1,labelwidth=#1,labelsep=0.5cm,itemsep=12pt]
+  \renewcommand{\makelabel}[1]{
+    \hspace{0pt}\textbf{##1}\hfill
+  }
+}{
+  \end{description}
+}
+
+
+\begin{denotation}[3cm]
+
+\item[LoRA]{Low-Rank Adaptation, a technique for efficient model fine-tuning.}
+
+\item[MLP]{Multi-Layer Perceptron, a type of feedforward neural network.}
+
+\item[LLM]{Large Language Model, a neural network trained on vast text data for language tasks.}
+
+\item[BERTScore]{BERT-based Text Similarity Evaluation, a metric for comparing text using BERT embeddings.}
+
+\item[ROUGE]{Recall-Oriented Understudy for Gisting Evaluation, a set of metrics for automatic text summarization evaluation.}
+
+\item[B-F1]{F1 score of BERTScore, measuring text similarity.}
+
+\item[R-1]{ROUGE-1 F1 score, based on unigram overlap.}
+
+\item[R-2]{ROUGE-2 F1 score, based on bigram overlap.}
+
+\item[R-L]{ROUGE-L F1 score, based on the longest common subsequence.}
+
+\item[R-Lsum]{ROUGE-Lsum F1 score, for summary-level evaluation using longest common subsequence.}
+
+\item[Judge]{Combined score for naturalness and information coverage, evaluated by a teacher model.}
+
+\item[Qwen]{Qwen, a Chinese large language model developed by Alibaba Cloud.}
+
+\item[Gemma]{Gemma, a large language model developed by Google.}
+
+\item[PEFT]{Parameter-Efficient Fine-Tuning, a method for adapting models with fewer parameters.}
+
+\item[GPU]{Graphics Processing Unit, hardware for parallel computation.}
+
+\item[CPU]{Central Processing Unit, the main processor of a computer.}
+
+\item[API]{Application Programming Interface, a set of protocols for building software applications.}
+
+\item[JSON]{JavaScript Object Notation, a lightweight data-interchange format.}
+
+\item[NLP]{Natural Language Processing, the field of processing and analyzing human language.}
+
+\item[AI]{Artificial Intelligence, the simulation of human intelligence by machines.}
+
+\end{denotation}

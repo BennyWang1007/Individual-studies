@@ -1,0 +1,253 @@
+% \documentclass[12pt,a4paper,oneside]{report}
+\documentclass[12pt,a4paper,twocolumn]{report}
+
+% -------------------- Packages --------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{setspace}        
+\usepackage{geometry}        
+\geometry{margin=1in}
+\usepackage{graphicx}        
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{hyperref}        
+\usepackage{tocbibind}       
+\usepackage{booktabs}        
+\usepackage{listings}        
+\usepackage{appendix}        
+
+
+\usepackage{silence}
+\WarningFilter{xeCJK}{Missing character}
+\WarningFilter{tcolorbox}{}
+
+
+
+% \usepackage{tcolorbox}
+\usepackage[most]{tcolorbox}
+\tcbuselibrary{skins}
+
+\usepackage{fontspec} % allows direct Unicode input
+\usepackage{xeCJK} % 分開設置中英文字型
+
+\setmainfont{Times New Roman}[
+Path = ./fonts/english/ ,
+Extension = .ttf ,
+BoldFont = *-Bold ,
+ItalicFont = *-Italic ,
+BoldItalicFont = *-BoldItalic, ]
+\setCJKmainfont{BiauKai}[
+Path = ./fonts/chinese/ ,
+Extension = .ttf , ]
+
+\usepackage{indentfirst}  % Indent first paragraph after section headings
+\usepackage{enumitem}    % Customize list environments
+
+\usepackage{titlesec}
+
+% Set paragraph indentation
+\setlength{\parindent}{0em}
+% Configure lists to align with paragraph indentation
+\setlist[enumerate]{leftmargin=2em, itemindent=0em}
+\setlist[itemize]{leftmargin=2em, itemindent=0em}
+
+% Format chapters - MUST be on one line or use % for line continuation
+\titleformat{\chapter}[hang]{\normalfont\huge\bfseries}{\chaptertitlename\ \thechapter}{1em}{}
+
+% Prevent chapters from starting on a new page
+% \let\cleardoublepage\clearpage
+\titleclass{\chapter}{straight}
+
+% Ensure \chapter* behaves like \chapter in two-column mode
+% \makeatletter
+% \renewcommand{\chapter*}[1]{%
+%     \if@twocolumn
+%         \twocolumn[\vspace*{2cm}\centering{\huge\bfseries #1}\par\vspace{2cm}]
+%         \@afterheading
+%     \else
+%         \par\vspace*{2cm}\centering{\huge\bfseries #1}\par\vspace{2cm}
+%         \@afterheading
+%     \fi
+% }
+% \makeatother
+
+% Reduce space before/after chapter titles
+\titlespacing*{\chapter}{0pt}{30pt}{20pt}
+
+% \titleformat{\chapter}[hang]{\normalfont\huge\bfseries}{\chaptertitlename\ \thechapter}{1em}{}
+
+\usepackage{caption}   % for customizing captions
+\usepackage{multicol}
+\usepackage{etoolbox}
+
+
+% -------------------- Formatting --------------------
+\onehalfspacing
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{3}
+
+% -------------------- Helper Commands --------------------
+\renewcommand{\appendix}[2]{
+    \chapter*{{#1}~  ~#2}
+    \phantomsection
+    \addcontentsline{toc}{chapter}{{#1}~  ~#2}
+    \setcounter{section}{0}
+    \renewcommand{\thechapter}{#1}
+}
+
+% -------------------- Title Page --------------------
+\begin{document}
+
+% cover
+\newgeometry{top=4cm, bottom=3cm, left=3cm, right=3cm}
+\begin{titlepage}
+    \begin{singlespace}
+        \begin{center}
+            % 中文校系名稱 (18, 27)
+            \fontsize{18}{27}\selectfont
+            國立成功大學資訊工程學系\par
+            專題研究\par
+
+            % 英文系所名稱 (14, 21)
+            \fontsize{14}{21}\selectfont
+            Department of Computer Science and Information Engineering\par
+            College of Electrical Engineering and Computer Science\par
+
+            % 英文學校名稱 (16, 24)
+            \fontsize{16}{24}\selectfont
+            National Cheng Kung University\par
+            Capstone Project\par
+
+            % 中英文論文題目 (18, 27)
+            % 中英文作者姓名 (18, 27)
+            % 中英文指導教授 (18, 27)
+            % 論文撰寫日期   (18, 27)
+            \vfill
+            \fontsize{18}{27}\selectfont
+            小模型，大貢獻：準確且高效的中文新聞摘要模型訓練研究\par
+            Small Model, Big Impact: A Study on Training for Accurate and Efficient Chinese News Summarization Models\par
+            \vfill
+            王郁豪\par
+            Yu-Hao Wang\par
+            \vfill
+            指導教授: 陳響亮 博士\par
+            Advisor: Shang-Liang Chen, Ph.D.\par
+            \vfill
+            中華民國 114 年 6 月\par
+            June, 2025
+        \end{center}
+    \end{singlespace}
+\end{titlepage}
+\clearpage
+\restoregeometry
+
+% \begin{titlepage}
+%     \centering
+%     \vspace*{2cm}
+%     {\Huge \textbf{小模型，大貢獻：準確且高效的中文新聞摘要模型訓練研究} \par}
+%     \vspace{0.5cm}
+%     {\Large Small Model, Big Impact: A Study on Training for Accurate and Efficient Chinese News Summarization Models \par}
+%     \vspace{2cm}
+%     {\Large 指導教授：陳響亮 教授 \par}
+%     {\Large 專題成員：王郁豪 \par}
+%     \vfill
+%     {\large 國立成功大學 資訊工程學系 \par}
+%     {\large 中華民國　XXXX 年　XX 月 \par}
+% \end{titlepage}
+
+% -------------------- 前置部分 --------------------
+\pagenumbering{roman}
+
+\onecolumn
+% \input{front/acknowledgement}
+\input{front/abstract}
+\twocolumn
+
+\tableofcontents
+% \listoffigures
+% \listoftables
+% \input{front/denotation}            % 符號列表（Denotation）
+
+% --------------- Contents of Thesis ---------------
+% \mainmatter
+\clearpage
+\pagenumbering{arabic}
+
+% \setlength{\parindent}{2em}
+
+% \titleformat{\chapter}[hang]
+%   {\normalfont\huge\bfseries} % format
+%   {\thechapter}               % only number
+%   {1em}                       % spacing
+%   {}  
+
+% \let\cleardoublepage\clearpage
+
+% --- Chapter style ---
+\titleformat{\chapter}[hang]
+  {\large\bfseries}         % Font
+  {\thechapter.}{0.5em}{}   % Numbering style
+\titlespacing*{\chapter}{0pt}{0pt}{6pt} 
+% {left}{before}{after}
+
+% Ensure \chapter* uses the same style as numbered chapters
+\titleformat{name=\chapter,numberless}[hang]
+    {\large\bfseries}
+    {}{0pt}{}
+\titlespacing*{name=\chapter,numberless}{0pt}{0pt}{6pt}
+
+% --- Section style ---
+\titleformat{\section}[hang]
+  {\normalsize\bfseries}
+  {\thesection}{0.5em}{}
+\titlespacing*{\section}{0pt}{4pt}{4pt}
+
+
+% 控制 caption 與表格之間的距離
+\captionsetup[table]{skip=5pt} % 預設大約 10pt, 改小一點
+\captionsetup[figure]{skip=5pt}
+
+% \setlength{\belowcaptionskip}{-15pt}
+% \setlength{\textfloatsep}{180pt} % 控制浮動表格與正文的距離
+% \setlength{\floatsep}{120pt}     % 控制兩個浮動體之間的距離
+
+% Reduce font size for all tables
+
+\AtBeginEnvironment{table}{\small}
+
+
+\newpage
+% \twocolumn
+% \begin{multicols}{2}
+% \input{contents/01_Introduction}
+\input{contents/02_Methodology}
+\input{contents/03_Experiments}
+\input{contents/04_Results}
+\input{contents/05_Conclusion}
+
+% -------------------- Back Matter --------------------
+\input{front/acknowledgement}
+\clearpage
+
+% -------------------- References --------------------
+\input{back/references}
+
+% \cleardoublepage
+% \phantomsection
+% \renewcommand{\bibname}{References}
+% \addcontentsline{toc}{chapter}{References}
+% \bibliographystyle{abbrv}
+% \bibliography{back/references}
+
+
+% -------------------- Appendices --------------------
+
+% Revert chapter style to start on a new page (default behavior)
+\titleclass{\chapter}{top}
+% \end{multicols}
+% \input{back/appendix01}
+\input{back/appendix02}
+
+\end{document}

@@ -1,0 +1,23 @@
+% % !TeX root = ../main.tex
+
+\fontsize{12}{18}\selectfont
+% \chapter*{\centering Abstract}
+\phantomsection
+% \addcontentsline{toc}{chapter}{Abstract}
+
+
+% Save the default chapter format
+\titleformat{name=\chapter,numberless}[display]
+{\normalfont\huge\bfseries}{}{0pt}{}
+
+% Center the chapter title and make it unnumbered
+{\titleformat{name=\chapter,numberless}[display]
+   {\filcenter\normalfont\huge\bfseries}{}{0pt}{}
+ \chapter*{Abstract}
+ \addcontentsline{toc}{chapter}{Abstract}}
+
+% % \begin{abstract}
+
+In the modern era of information overload, people often lack time to read full news articles and may be influenced by sensational headlines, leading to biased understanding. This thesis develops a compact Chinese news summarization model capable of running on resource-limited devices, such as smartphones, while maintaining high comprehension and summary quality. Combining knowledge distillation and curriculum training, we compress model parameters while enhancing generalization and language understanding. A five-stage curriculum is designed to gradually teach the model traditional Chinese conversion, essential aspect extraction, reasoning construction, and summary generation. Various data generation strategies and training approaches are evaluated, including learning rate adjustments, parameter freezing, and LoRA fine-tuning. Experimental results demonstrate that a 0.5B-parameter student model achieves comparable summary quality to 3B-parameter models, outperforming similar small-scale models and generating outputs with high fluency and content coverage. This work demonstrates the feasibility of lightweight yet high-quality Chinese news summarization models and provides a practical framework for mobile deployment.
+
+% % \end{abstract}

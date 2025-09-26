@@ -1,0 +1,40 @@
+% !TeX root = ../main.tex
+
+\chapter{Results}
+
+\section{Final Model Performance}
+The final 0.5B model achieves performance approaching that of larger 3B models in ROUGE-1 and BERTScore, demonstrating substantial improvements in summary generation quality. It significantly outperforms comparable small models, such as the Gemma series, with ROUGE-1 gains of approximately 5–7\%, reaching a practically usable level. Compared with its pre-trained version before post-training and curriculum stages, the model’s Judge score increased by over 0.16, indicating that the training strategy effectively enhanced the naturalness and informativeness of generated summaries.
+
+Table~\ref{tab:final_05B_comparison} shows a comparison of the final 0.5B model with other models of similar parameter scale and larger teacher models. The results suggest that careful curriculum training allows smaller models to approach the performance of significantly larger ones, closing the gap in both automatic evaluation metrics and human-judged quality.
+
+% \begin{table}[ht]
+%   \centering
+%   \caption{Performance Comparison of Final 0.5B Model with Other Models of Similar Parameter Scale}
+
+\begin{center}
+    \captionof{table}{Performance Comparison of Final 0.5 Model with Other Models of Similar Parameter Scale}
+    \label{tab:final_05B_comparison}
+    \resizebox{\columnwidth}{!}{
+    \begin{tabular}{lccccc}
+    \toprule
+    Model & R-1 & B-F1 & Judge & R-2 & R-L \\
+    \midrule
+    Qwen2.5-32B & \textbf{55.6} & \textbf{82.2} & 81.7 & \textbf{34.9} & \textbf{48.2} \\
+    Qwen2.5-3B & 49.5 & 79.8 & \textbf{83.8} & 26.2 & 40.1 \\
+    Qwen2.5-0.5B\_5stg\_v4-lr\_adj & 46.5 & 78.6 & 75.1 & 23.9 & 38.3 \\
+    Llama-3.2-3B & 43.3 & 76.8 & 74.3 & 20.7 & 34.7 \\
+    Gemma-3-1B & 41.8 & 76.0 & 72.6 & 18.3 & 31.2 \\
+    Qwen2.5-0.5B & 39.7 & 74.8 & 58.7 & 18.5 & 30.9 \\
+    Gemma-2-2B & 39.3 & 71.9 & 83.4 & 18.3 & 26.2 \\
+    Llama-3.2-1B & 38.7 & 74.1 & 63.4 & 16.9 & 29.5 \\
+    DeepSeek-R1-1.5B & 32.2 & 71.3 & 65.8 & 12.0 & 21.4 \\
+    \bottomrule
+    \end{tabular}}
+\end{center}
+% \end{table}
+
+\section{Traditional Chinese Generation}
+In addition to overall performance, the model demonstrates marked improvements in linguistic handling. After post-training, the proportion of Traditional Chinese output rises significantly, even exceeding that of the teacher model. The percentage of responses completely free of Simplified Chinese characters is also higher than in other models, highlighting the effectiveness of the training data and curriculum strategy in producing culturally and linguistically appropriate text.
+
+\section{Mitigation of Teacher Model Errors}
+Beyond linguistic improvements, the model also mitigates issues inherited from the teacher model. Quantitative analysis shows that abnormal or unexpected endings are fully corrected: among 30,296 samples, 2,871 instances contained irregular endings (e.g., “\texttt{\textbackslash n hổ \textbackslash n}”) in the teacher model, whereas after post-training, none of these anomalies appeared. This demonstrates that the staged curriculum learning and high-quality training dataset effectively addressed imperfections present in the original teacher outputs.

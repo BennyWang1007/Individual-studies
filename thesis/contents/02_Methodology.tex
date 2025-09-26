@@ -1,0 +1,34 @@
+% !TeX root = ../main.tex
+
+\chapter{Methodology}
+\section{Data Collection}
+To construct the training corpus, a web crawler was implemented to collect news articles from \textit{United Daily News}. In addition, the YeungNLP/firefly-pretrain-dataset was incorporated as supplementary pretraining data. This combination provided both domain-specific content and a broader linguistic foundation for model development.
+
+\section{Model Selection}
+Two models from the Qwen2.5 family were adopted. The student model was Qwen2.5-0.5B-Instruct, a lightweight 0.5-billion-parameter model intended for efficient training and deployment. The teacher model was Qwen2.5-32B-Instruct, which was used not only to generate synthetic training data but also to provide preprocessing guidance and evaluation signals during experimentation.
+
+\section{Curriculum Training}
+The training process was organized into five progressive stages (S1–S5) designed to gradually increase task complexity. First, traditional Chinese text was standardized using OpenCC (S1). Next, essential aspects were extracted from each article (S2), followed by the construction of reasoning triples that captured semantic relationships among these aspects (S3). Building on this foundation, the model then generated summaries based on the content together with the extracted aspects and triples (S4). Finally, the most challenging stage required the model to generate summaries directly from the raw news content (S5).
+
+\section{Data Generation Strategies}
+Different strategies were explored to generate training data. The \textbf{V1 strategy} relied on a single step to jointly produce aspects, triples, and summaries. \textbf{V2} followed a sequential approach in which aspects were first generated, then expanded into triples, and finally used to construct summaries. \textbf{V3} reversed the order by generating the summary first and subsequently deriving aspects and triples from it. \textbf{V4} extended V3 with manual corrections to reduce noise and improve training quality. The final dataset was divided into 23,848 training articles, 5,960 validation articles, and 6,052 test articles, as summarized in Table~\ref{tab:dataset_statistics}.
+
+{
+    \captionof{table}{Dataset Statistics}
+    \label{tab:dataset_statistics}
+    \centering
+    \resizebox{\columnwidth}{!}{
+    \begin{tabular}{lccc}
+        \toprule
+        Dataset & Training & Validation & Testing \\
+        \midrule
+        Number of articles & 23848 & 5960 & 6052 \\
+        \bottomrule
+    \end{tabular}}
+}
+
+\section{Training Strategies}
+Several fine-tuning strategies were evaluated. The default configuration applied a decaying learning rate. A variant, denoted \texttt{lr\_adj}, maintained a constant learning rate in Stage 5 to prevent premature convergence. Other experiments selectively froze model components, either keeping only attention layers (\texttt{only\_attn}) or only MLP layers (\texttt{only\_mlp}) trainable, to measure their relative contributions. LoRA-based adaptation was also tested, applying low-rank factorization to MLP (rank 160) and attention (rank 32) layers. Finally, combinations of these methods were explored to assess possible synergies.
+
+\section{Evaluation Metrics}
+Model outputs were evaluated using both automatic and human-aligned metrics. ROUGE-1, ROUGE-2, and ROUGE-L were applied to measure n-gram overlap with reference summaries, while BERTScore was used to capture semantic similarity. In addition, the teacher model (32B) was employed as a judge to assess naturalness and information coverage, providing a complementary qualitative evaluation beyond automatic metrics.

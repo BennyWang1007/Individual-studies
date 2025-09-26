@@ -1,0 +1,213 @@
+% !TeX root = ../main.tex
+
+% Define font size variables for tcolorbox titles and content
+\newcommand{\promptTitleFontSize}{\small}
+\newcommand{\promptContentFontSize}{\fontsize{8pt}{10pt}\selectfont}
+
+\tcbset{
+  promptstyle/.style={
+    boxrule=0.8pt,
+    arc=4mm,
+    top=3mm,
+    bottom=3mm,
+    left=3mm,
+    right=3mm,
+    fonttitle=\bfseries,
+    % breakable,
+    fonttitle=\promptTitleFontSize, fontupper=\promptContentFontSize
+  }
+}
+
+\onecolumn
+
+\appendix{A}{Prompt Templates and Examples}
+
+This appendix provides the prompt templates and examples used in this study, including the complete prompt designs for different versions of essential aspect extraction, triple generation, summary generation, and model evaluation.
+
+% V1 prompt
+\begin{tcolorbox}[promptstyle, title=Prompt for generating V1 summary with essential aspects and triples]
+System prompt:\newline
+給定一份文章，完成以下任務：\newline
+(1) 提取新聞的關鍵要素，關鍵要素應為關鍵短句、名詞或事實。\newline
+(2) 對於每個關鍵要素，檢索詳細的三元組，格式為 [實體1 | 關係 | 實體2]，這些三元組用於構成摘要。\newline
+(3) 使用檢索到的三元組撰寫一份摘要。\newline
+核心要素、三元組和撰寫的摘要應該在同一份回應中，並以換行符分隔。所有三元組 [實體1 | 關係 | 實體2] 的長度必須為3（以 "|" 分隔）。\newline
+範例：\newline
+================範例=================\newline
+提示：\newline
+新聞：\newline
+\{新聞\} \newline
+\newline
+更新：\newline
+核心要素： \newline
+[關鍵要素1]、[關鍵要素2]、[關鍵要素3]、...\newline
+\newline
+三元組：\newline
+[實體1\_1 | 關係\_1 | 實體1\_2]\newline
+[實體2\_1 | 關係\_2 | 實體2\_2]\newline
+[實體3\_1 | 關係\_3 | 實體3\_2]\newline
+...\newline
+\newline
+生成摘要：\newline
+\{摘要\}\newline
+
+=============================================================================================\newline
+User prompt:\newline
+新聞：\newline\{news\}
+\end{tcolorbox}
+
+% Example of arranging multiple tcolorboxes
+\noindent
+% \begin{minipage}[t]{0.48\textwidth}
+\begin{tcolorbox}[promptstyle, title=Prompt for generating V2 essential aspects]
+System prompt:\newline
+請根據以下新聞內容，提取新聞的關鍵要素，關鍵要素應為關鍵短句、名詞或事實，請用中文回答，並且不要使用任何標點符號。請將每個關鍵要素用[]與、分隔。例如：\newline
+關鍵要素：\newline
+[關鍵要素1]、[關鍵要素2]、[關鍵要素3]\newline
+=============================================================================================\newline
+User prompt:\newline
+新聞：\newline
+\{news\}
+\end{tcolorbox}
+% \end{minipage}
+% \hfill
+% \begin{minipage}[t]{0.48\textwidth}
+\begin{tcolorbox}[promptstyle, title=Prompt for generating V2 triples, fonttitle=\promptTitleFontSize, fontupper=\promptContentFontSize]
+System prompt:\newline
+請根據以下新聞內容與關鍵要素，檢索詳細的三元組，格式為 [實體1 | 關係 | 實體2]，這些三元組用於構成摘要，請用中文回答，並且不要使用任何標點符號。所有三元組用[]與、分隔，且長度必須為3。\newline
+例如：\newline
+三元組：\newline
+[實體1\_1 | 關係\_1 | 實體1\_2]、[實體2\_1 | 關係\_2 | 實體2\_2]、...\newline
+=============================================================================================\newline
+User prompt:\newline
+新聞：\newline
+\{news\}\newline
+
+關鍵要素：\newline
+\{essential\_aspects\}
+\end{tcolorbox}
+% \end{minipage}
+
+\vspace{3mm} % space between rows
+\noindent
+% \begin{minipage}[t]{0.98\textwidth}
+\begin{tcolorbox}[promptstyle, title={Prompt for generating V2 summary}]
+System prompt:\newline
+請根據以下新聞內容與檢索到的關鍵要素以及三元組，為新聞生成一份摘要，請用繁體中文回答。\newline
+例如：\newline
+生成摘要：\newline
+=============================================================================================\newline
+User prompt:\newline
+新聞：\newline
+\{news\}\newline
+\newline
+關鍵要素：\newline
+\{essential\_aspects\}\newline
+
+三元組：\newline
+\{triples\}
+\end{tcolorbox}
+% \end{minipage}
+
+\vspace{3mm}
+\noindent
+% \begin{minipage}[t]{0.98\textwidth}
+\begin{tcolorbox}[promptstyle, title={Prompt for generating V3 summary}]
+System prompt:\newline
+請根據以下新聞內容，為新聞生成一份100字內精簡的摘要，請用繁體中文回答。\newline
+例如：\newline
+生成摘要：\newline
+
+User prompt:\newline
+新聞：\newline
+\{news\}
+\end{tcolorbox}
+% \end{minipage}
+
+\vspace{3mm}
+\noindent
+% \begin{minipage}[t]{0.98\textwidth}
+\begin{tcolorbox}[promptstyle, title={Prompt for generating V3 essential aspects and triples}, fonttitle=\promptTitleFontSize, fontupper=\promptContentFontSize]
+System prompt:\newline
+請根據以下新聞內容以及摘要，提取新聞的關鍵要素與三元組，關鍵要素應為關鍵短句、名詞或事實，三元組應為[實體1 | 關係 | 實體2]的格式，這些三元組用於構成摘要，請用繁體中文回答。請將每個關鍵要素與三元組用[]與、分隔。例如：\newline
+關鍵要素：\newline
+[關鍵要素1]、[關鍵要素2]、[關鍵要素3]、...\newline
+\newline
+三元組：\newline
+[實體1\_1 | 關係\_1 | 實體1\_2]、[實體2\_1 | 關係\_2 | 實體2\_2]、...\newline
+\newline
+User prompt:\newline
+新聞：\newline
+\{news\}\newline
+
+摘要：\newline
+\{summary\}
+\end{tcolorbox}
+% \end{minipage}
+
+\vspace{3mm}
+\noindent
+% \begin{minipage}[t]{0.98\textwidth}
+\begin{tcolorbox}[promptstyle, title={Example news, essential aspects, triples, and summary (V3)}]
+新聞：\newline
+母愛不分物種。動保組織接獲民眾通報發現草叢有一窩胖嘟嘟奶汪，沒想到牠們的母親為了照顧這些孩子把自己餓成皮包骨，還有嚴重營養不良跟脫水狀況，對比起小狗們都肥碩健康，狗媽媽更是令人心疼。\newline
+根據The Dodo報導，美國密蘇里州(Missouri)聖路易斯流浪動物救援組織(Stray Rescue of St. Louis,SRSL)日前接獲民眾通報，說草叢裡面發現一窩肥胖的奶汪，但卻找不到狗媽媽，希望他們可以派人來協助一下。動物救援組織工作人員湯姆森(Natalie Thomson)表示，當他們趕往民眾通報的現場，的確真的看到一窩被照顧得好好的奶汪，很像是被人飼養後遺棄在附近。\newline
+但令動保人員意外的一幕出現了，他們過沒多久在附近的草叢找到了狗媽媽，可是這隻渾身骨瘦如柴、幾乎可以用皮包骨形容的黃狗顯然非常營養不良，跟牠一窩肥壯幼崽形成強烈對比，這隻狗媽媽顯得有些害怕人類，但牠並沒有逃跑或是圖保護孩子，反而是將目光投射在小狗身上，希望眼前的人類不要傷害牠的孩子。\newline
+每一隻狗寶寶都相當健康可愛甚至還有點肥。 (圖/取自Stray Rescue of St. Louis官網)\newline
+後來這一窩共10隻奶汪跟牠們孱弱的母親都被聖路易斯流浪動物救援組織帶回收容所，經過健康檢查後反而讓獸醫跟動保人員更難過了，因為這10隻小奶狗除了有點寄生蟲問題之外，沒有任何營養不良的狀況，甚至還有些過重，但狗媽媽卻嚴重營養不良還脫水，可以說為了照顧孩子鞠躬盡瘁。\newline
+目前這一窩小奶汪都受到良好的照顧，不日將可開放認養，而狗媽媽則因為身體虛弱還需要靜養一段時間才可以考慮出養。湯姆森說，這隻狗媽媽其實是很溫柔的，只是個性比較慢熟，所以需要有愛心跟耐心的飼主陪伴，牠就會慢慢敞開心房願意相信人類。\newline
+\newline
+摘要：\newline
+美國密蘇裡州一窩小狗被發現肥胖健康，但牠們的母親卻因照顧孩子而嚴重營養不良、脫水。這11隻狗已被救出，小狗們即將開放認養，母親則需繼續靜養。救援組織尋找有耐心的飼主，以陪伴這位溫柔但慢熟的母親。\newline
+\newline
+關鍵要素：\newline
+[美國密蘇裡州]、[一窩小狗]、[肥胖健康]、[母親嚴重營養不良]、[脫水]、[已被救出]、[小狗們即將開放認養]、[母親需繼續靜養]、[救援組織尋找有耐心的飼主]、[溫柔但慢熟的母親]\newline
+\newline
+三元組：\newline
+[美國密蘇裡州 | 發現 | 一窩小狗], [小狗 | 肥胖健康 | 狗媽媽], [狗媽媽 | 照顧孩子 | 嚴重營養不良], [狗媽媽 | 照顧孩子 | 脫水], [一窩小狗 | 被 | 救出], [小狗們 | 即將 | 開放認養], [狗媽媽 | 需 | 繼續靜養], [救援組織 | 尋找 | 有耐心的飼主], [狗媽媽 | 是 | 溫柔但慢熟的]
+\end{tcolorbox}
+% \end{minipage}
+
+\vspace{3mm}
+\noindent
+\begin{minipage}[t]{0.98\textwidth}
+\begin{tcolorbox}[promptstyle, title={Model scoring prompt}, fonttitle=\promptTitleFontSize, fontupper=\promptContentFontSize]
+System prompt:\newline
+你是一位語言評估專家。你的任務是根據文章與標準摘要，評估模型生成的摘要品質。\newline
+請根據以下評分標準，從 0 到 20 為其打分：\newline
+0：格式不正確或無意義的文字。\newline
+1：完全無關，與文章毫不相干。\newline
+2：虛構內容，語意不明。\newline
+3：嚴重誤解，包含重大錯誤。\newline
+4：幾乎無法反映原文，非常不完整。\newline
+5：文法錯誤，缺乏連貫性與相關性。\newline
+6：內容不完整且部分離題。\newline
+7：遺漏關鍵要點，有輕微虛構。\newline
+8：摘要過於模糊，缺乏具體性。\newline
+9：簡潔，涵蓋大部分重點。\newline
+10：可理解但可能遺漏細節。\newline
+11：忠實但略有遺漏。\newline
+12：大致正確但稍顯冗餘。\newline
+13：準確、結構良好，但有輕微風格問題。\newline
+14：涵蓋完整、清晰，語氣尚可改進。\newline
+15：清楚、忠實且具風格。\newline
+16：簡潔優雅，涵蓋所有重點。\newline
+17：非常接近理想摘要，僅有些微瑕疵。\newline
+18：優秀的摘要，易讀且內容完整。\newline
+19：幾近完美，僅可做細微風格潤飾。\newline
+20：完美——清楚、忠實、完整且優雅。\newline
+請回傳"分數："加一個整數分數（0–20），接著是一句簡短的理由（例如：「分數：17 —— 非常接近理想摘要，僅有些微瑕疵」）。\newline
+
+=============================================================================================\newline
+User prompt:\newline
+文章：\newline
+\{article\}\newline
+
+標準摘要：\newline
+\{ground\_truth\}\newline
+
+模型生成摘要：\newline
+\{response\}
+\end{tcolorbox}
+\end{minipage}
+
