@@ -363,7 +363,7 @@ def get_simple_name(name: str) -> str:
          R"(-curriculum|-cl)?_([0-9]+)news_([0-9])(stage|stg)"
          R"(_A100)?(.*)?$",
          lambda m: (
-             f"Qw{m.group(2)}-{m.group(3)}"
+             f"Qwen{m.group(2)}-{m.group(3)}"
              f"_{m.group(6)}stg{m.group(9) or ''}"
          )),
         # parse gemma models
@@ -371,7 +371,7 @@ def get_simple_name(name: str) -> str:
          lambda m: f"Gemma-{m.group(1)}-{m.group(2)}"),
         # parse Qwen models
         (R"^Qwen/Qwen([0-9\.]+)-([0-9\.]+B)(-Instruct$)?",
-            lambda m: f"Qw{m.group(1)}-{m.group(2)}"),
+            lambda m: f"Qwen{m.group(1)}-{m.group(2)}"),
         # parse Custom models
         (
             R"^CustomQwen([0-9]+)Model(_pretrained)?-cl_([0-9]+)news_([0-9])"

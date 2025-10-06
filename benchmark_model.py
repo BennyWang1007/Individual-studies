@@ -4,13 +4,7 @@ import os
 import re
 from dataclasses import dataclass
 
-import bert_score
-import evaluate
-import jieba
 import jinja2
-from opencc import OpenCC
-from rouge_score import rouge_scorer
-from rouge_chinese import Rouge as RougeChinese
 from tqdm import tqdm
 
 from curriculum_training.constants import (
@@ -30,6 +24,14 @@ from curriculum_training.curriculum_utils import (
 from crawler.utils import Logger
 from news_with_rationale import NewsWithRationale
 from utils import legalize_filename
+from benchmark_utils import (
+    cc,
+    evaluate_with_rouge_chinese,
+    evaluate_with_bertscore,
+    avg_bert_scores,
+    avg_judge_scores,
+    avg_rouge_scores_chinese,
+)
 
 os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
 
@@ -161,74 +163,12 @@ sampling_params = None
 tokenizer = None
 prev_judge_model = None
 
-rouge_c = RougeChinese()
-rouge_eval = evaluate.load("rouge")
-cc = OpenCC("s2tw")  # Simplified Chinese to Traditional Chinese
+# cc = OpenCC("s2tw")  # Simplified Chinese to Traditional Chinese
 
 """ ----------------------- Global data end ----------------------- """
 
 eval_logger = Logger("eval score", verbose_level=3)
 eval_logger.info(f"Total news count: {news_count}")
-
-
-def evaluate_with_rouge(predictions, references) -> list[dict]:
-    scorer = rouge_scorer.RougeScorer(['rouge1', 'rougeL'], use_stemmer=True)
-    scores = [
-        scorer.score(pred, ref) for pred, ref in zip(predictions, references)
-    ]
-    return scores
-
-
-def evaluate_with_rouge_chinese(preds: list[str], refs: list[str]) -> dict:
-    preds = [" ".join(jieba.cut(pred)) for pred in preds]
-    refs = [" ".join(jieba.cut(ref)) for ref in refs]
-
-    scores = []
-    for pred, ref in tqdm(zip(preds, refs), total=len(preds),
-                          desc="Evaluating with Rouge Chinese"):
-        if len(pred) == 0 or len(ref) == 0:
-            scores.append(
-                {
-                    "rouge-1": {"f": 0, "p": 0, "r": 0},
-                    "rouge-l": {"f": 0, "p": 0, "r": 0},
-                    "rouge-2": {"f": 0, "p": 0, "r": 0},
-                }
-            )
-            continue
-        score = rouge_c.get_scores(pred, ref)
-        scores.append(score[0])
-
-    scores_dict = {
-        "rouge1_f": [score["rouge-1"]["f"] for score in scores],
-        "rouge1_p": [score["rouge-1"]["p"] for score in scores],
-        "rouge1_r": [score["rouge-1"]["r"] for score in scores],
-        "rougeL_f": [score["rouge-l"]["f"] for score in scores],
-        "rougeL_p": [score["rouge-l"]["p"] for score in scores],
-        "rougeL_r": [score["rouge-l"]["r"] for score in scores],
-        "rouge2_f": [score["rouge-2"]["f"] for score in scores],
-        "rouge2_p": [score["rouge-2"]["p"] for score in scores],
-        "rouge2_r": [score["rouge-2"]["r"] for score in scores],
-    }
-
-    return scores_dict
-
-
-def evaluate_with_rouge_eval(preds: list[str], refs: list[str]) -> dict:
-    preds = [cc.convert(pred).strip() for pred in preds]
-    # preds = [" ".join(jieba.cut(pred)) for pred in preds]
-    # refs = [" ".join(jieba.cut(ref)) for ref in refs]
-    return rouge_eval.compute(
-        predictions=preds,
-        references=refs,
-        use_stemmer=True,
-        rouge_types=["rouge1", "rougeL", "rougeLsum", "rouge2"]
-    )
-
-
-def evaluate_with_bertscore(preds, refs) -> dict:
-    P, R, F1 = bert_score.score(preds, refs, lang="zh",
-                                model_type="bert-base-chinese", verbose=True)
-    return {"precision": P.tolist(), "recall": R.tolist(), "f1": F1.tolist()}
 
 
 def judge_summary_0_to_20_prompt_sys_eng() -> str:
@@ -542,7 +482,7 @@ def gen_benchmark_response(
                 tokenizer.apply_chat_template(
                     [
                         {"role": "system", "content": sys_prompt},
-                        {"role": "user", "content": "article:\n" + nwr.article}
+                        {"role": "user", "content": "新聞:\n" + nwr.article}
                     ],
                     tokenize=False,
                     add_generation_prompt=True
@@ -699,40 +639,6 @@ def benchmark_model(benchmark_obj: BenchmarkObj, saving: bool = True) -> dict:
             json.dump(results, f, indent=4, ensure_ascii=False)
 
     return results
-
-
-def avg_rouge_scores(rouge_scores):
-    avg_scores = {}
-    for score in rouge_scores[0].keys():
-        avg_scores[score] = 0 if len(rouge_scores) == 0 else sum(
-            [rouge_score[score].fmeasure for rouge_score in rouge_scores]
-        ) / len(rouge_scores)
-    return avg_scores
-
-
-def avg_rouge_scores_chinese(rouge_scores: dict[str, list]) -> dict:
-    avg_scores = {}
-    for k, v in rouge_scores.items():
-        avg_scores[k] = 0 if len(v) == 0 else sum(v) / len(v)
-    return avg_scores
-
-
-def avg_bert_scores(bert_scores):
-    avg_scores = {}
-    for score in bert_scores.keys():
-        avg_scores[score] = 0 if len(bert_scores) == 0 else sum(
-            [bert_score for bert_score in bert_scores[score]]
-        ) / len(bert_scores[score])
-    return avg_scores
-
-
-def avg_judge_scores(judge_scores):
-    avg_score = 0 if len(judge_scores) == 0 else sum(
-        judge_scores
-    ) / len(judge_scores)
-
-    # Normalize the score to a scale of 0 to 1
-    return avg_score / 20.0
 
 
 if __name__ == "__main__":

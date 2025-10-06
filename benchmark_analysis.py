@@ -2,10 +2,10 @@ import json
 import os
 from dataclasses import dataclass
 
-import matplotlib.pyplot as plt
 import numpy as np
 
-from utils import get_simple_name, ljust_labels
+from benchmark_utils import plot_benchmark_results
+from utils import get_simple_name
 
 
 BENCHMARK_DIR = "benchmark_result"
@@ -101,30 +101,12 @@ class BenchmarkResult:
         ])
 
 
-def plot_benchmark_results(results: list[BenchmarkResult], field):
-    results.sort(key=lambda x: getattr(x, field))
+def plot_benchmark_field(results: list[BenchmarkResult], field):
     values = [getattr(result, field) for result in results]
     errors = [getattr(result, f"{field}_std") for result in results]
     labels = [get_simple_name(r.modelname) for r in results]
 
-    # Pad labels to the same length
-    labels = ljust_labels(labels, width=20)
-
-    plt.figure(figsize=(20, 12))
-    plt.title(f"Benchmark Results: {field}")
-    plt.barh(labels, values, xerr=errors, capsize=5)
-    plt.xlabel(field)
-    plt.ylabel("Model")
-    plt.yticks(rotation=0, fontname="monospace")  # Use monospace font
-    plt.grid(axis='x')
-    plt.tight_layout()
-
-    if "bert" in field:
-        plt.xlim(0.6, 0.9)
-
-    # save the plot
-    plt.savefig(os.path.join(BENCHMARK_DIR, f"{field}.png"))
-    plt.close()
+    plot_benchmark_results(values, errors, labels, field, BENCHMARK_DIR)
 
 
 def load_benchmark_results(benchmark_dir: str) -> list[BenchmarkResult]:
@@ -156,4 +138,4 @@ if __name__ == "__main__":
     benchmark_results = load_benchmark_results(BENCHMARK_DIR)
 
     for field in fields_to_plot:
-        plot_benchmark_results(benchmark_results, field)
+        plot_benchmark_field(benchmark_results, field)
